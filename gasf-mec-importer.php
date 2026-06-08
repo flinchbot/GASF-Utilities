@@ -31,7 +31,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'GASF_MEC_VERSION', '1.0.0' );
+define( 'GASF_MEC_VERSION', '1.1.0' );
 
 // Log lives OUTSIDE the web root (parent of ABSPATH), not web-fetchable.
 // Falls back silently if unwritable (logging is best-effort).
@@ -423,6 +423,12 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_recurrence' ) ) {
 				$apply_dates( $post_id, $occ->start_time, isset( $occ->end_time ) ? $occ->end_time : null, $timezone );
 				update_post_meta( $post_id, 'mec_advimp_facebook_event_id', $occ_id );
 				update_post_meta( $post_id, 'mec_advimp_recurring', 1 );
+				// Stamp the PARENT FB id as mec_source_event_id. The importer's own dedup
+				// (sync.php remove_exists_event_ids checks mec_source_event_id) then
+				// recognises the recurring event as already imported and stops re-creating
+				// it every cycle — killing the duplicate-churn at its source. The sweep
+				// inherits this marker onto the kept post if a dup is collapsed.
+				update_post_meta( $post_id, 'mec_source_event_id', $meta_value );
 				$p = get_post( $post_id );
 				if ( $p ) {
 					wp_update_post( array( 'ID' => $post_id, 'post_title' => $tag( $p->post_title ) ) );
@@ -566,6 +572,12 @@ function gasf_mec_dedup_sweep( $dry_run = null ) {
 			$by_title = array();
 			foreach ( $posts as $po ) {
 				$k = strtolower( trim( (string) $po->post_title ) );
+				// Normalise away the " (recurring)" tag Module D appends, so an occurrence
+				// imported as "X" and re-imported/expanded as "X (recurring)" dedupe together
+				// (while genuinely different same-date titles still stay separate).
+				if ( substr( $k, -12 ) === ' (recurring)' ) {
+					$k = trim( substr( $k, 0, -12 ) );
+				}
 				$by_title[ $k ][] = (int) $po->ID;
 			}
 
@@ -581,7 +593,19 @@ function gasf_mec_dedup_sweep( $dry_run = null ) {
 					$tag, $c->fb_id, $c->start_date, $keep, implode( ',', $ids )
 				) );
 				if ( ! $dry_run ) {
+					$keep_marker = get_post_meta( $keep, 'mec_source_event_id', true );
 					foreach ( $ids as $del_id ) {
+						// Inherit the recurring-parent marker (mec_source_event_id) onto the
+						// kept (oldest) post before deleting, so the importer's own dedup
+						// recognises this occurrence as already imported — stops the churn
+						// while preserving the established (oldest) post + its permalink.
+						if ( empty( $keep_marker ) ) {
+							$m = get_post_meta( $del_id, 'mec_source_event_id', true );
+							if ( ! empty( $m ) ) {
+								update_post_meta( $keep, 'mec_source_event_id', $m );
+								$keep_marker = $m;
+							}
+						}
 						wp_delete_post( $del_id, true );
 						$deleted++;
 					}

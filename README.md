@@ -24,9 +24,24 @@ stale scheduled-import breadcrumb posts behind.
 | **A — Cron registration** | #17 | Removes the importer's `setup_sync_cron` (which clears+reschedules its hooks on *every* `init`, so they never mature) and registers the `every_minute` schedule once. |
 | **B — Force FB page defaults** | #20 | Server-side forces `importType=page`,`importTypeVal=GermanTampa` on manual FB imports; defaults the admin date window to today…+60d. |
 | **C — Window response filter** | #19 | On a manual date-range sync, strips out-of-window Facebook events from the Graph API response before the importer parses it. |
-| **D — Recurrence expansion** | #18 | Expands a Facebook recurring event (`event_times`) into one MEC event per occurrence (distinct occurrence id + date, `mec_advimp_recurring=1`, " (recurring)" title). Fires on `added_post_meta` for the FB-id key — which `update_post_meta` triggers on a *new* event insert (`main.php:7591`). |
-| **E — Dedup sweep** ⭐ | #21 | **The core fix.** After each importer sync (`mec_advimp_sync_hook` @ priority 999) it collapses duplicate `mec-events`. Does **not** rely on catching any MEC save hook. |
+| **D — Recurrence expansion** | #18 | Expands a Facebook recurring event (`event_times`) into one MEC event per occurrence (distinct occurrence id + date, `mec_advimp_recurring=1`, " (recurring)" title). Fires on `added_post_meta` for the FB-id key — which `update_post_meta` triggers on a *new* event insert (`main.php:7591`). **Also stamps the parent FB id as `mec_source_event_id`** on the occurrence post (see "stopping the churn"). |
+| **E — Dedup sweep** ⭐ | #21 | **The core safety net.** After each importer sync (`mec_advimp_sync_hook` @ priority 999) it collapses duplicate `mec-events`. Does **not** rely on catching any MEC save hook. Inherits the `mec_source_event_id` marker onto the kept post when collapsing. |
 | **F — `request` bloat cap** | (new) | Blocks the importer's `request` postmeta writes outside admin-ajax (i.e. on the cron path — the bloat source), preserving the live manual-import progress UI. |
+
+### Stopping the re-import churn at the source (v1.1.0)
+
+A Facebook *recurring* event is returned by the importer as a single parent id (e.g.
+`2124691378103866`); its occurrence #1 is itself a distinct id (e.g. `2124691381437199`,
+the "Oct 31 Biergarten"). MEC's importer keys its dedup on the **parent** id, but after
+Module D runs no post carries the parent id — so every sync re-created the event, Module
+D re-tagged it " (recurring)", and a tag-only duplicate appeared each cycle.
+
+The fix makes the importer's **own** dedup recognise the event: Module D stamps the parent
+id as `mec_source_event_id` on the occurrence post (the importer's `remove_exists_event_ids`
+checks that key), and the sweep **inherits** that marker onto the kept (oldest) post when it
+collapses a dup. Once the surviving post carries the marker, the importer skips the recurring
+event entirely — verified live: import #2 self-healed (stamp + inherit), import #3 created
+zero posts.
 
 ### Dedup key (Module E) — why title matters
 
@@ -40,6 +55,10 @@ title**, keeping the **oldest** (lowest post ID):
 The title component is essential: e.g. FB id `354058170457444` has two real events on
 `2024-05-18` ("May Dance and Dinner" and "Memorial Day Dance and Dinner"). A naive
 (id+date) key would have destroyed one of them.
+
+The normalised title also **strips a trailing " (recurring)"** so that an occurrence
+imported as "Biergarten" and re-imported/expanded as "Biergarten (recurring)" dedupe
+together — while genuinely different same-date titles (above) still stay separate.
 
 To stay within this shared host's tiny `sort_buffer_size`, candidate `(id,date)` groups
 are found in SQL (short indexed columns), and the title sub-grouping is done in PHP — the

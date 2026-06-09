@@ -31,7 +31,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'GASF_MEC_VERSION', '1.2.1' );
+define( 'GASF_MEC_VERSION', '1.2.2' );
 
 // Log lives OUTSIDE the web root (parent of ABSPATH), not web-fetchable.
 // Falls back silently if unwritable (logging is best-effort).
@@ -411,10 +411,14 @@ function gasf_mec_apply_recurrence( $post_id, $parent_fb_id ) {
 		$day_entries[] = $d . ':' . $d . ':' . $st_str . ':' . $et_str;
 	}
 
-	// Update the event's row in MEC's own table; days = the explicit occurrence list.
+	// Update the event's row in MEC's own table. CRITICAL: `end` is the end date of the
+	// FIRST occurrence (single day = $first), NOT the repeat-finish — MEC's custom_days
+	// renderer uses mec_events.end as the first occurrence's end, so setting it to the last
+	// date makes the first occurrence span the whole range (a 57-day bar on every day).
+	// The repeat-finish lives in the mec_repeat_end_at_date meta set above.
 	$wpdb->query( $wpdb->prepare(
 		"UPDATE {$wpdb->prefix}mec_events SET `start`=%s, `end`=%s, `repeat`=1, `rinterval`=NULL, `days`=%s WHERE `post_id`=%d",
-		$first, $last, implode( ',', $day_entries ), (int) $post_id
+		$first, $first, implode( ',', $day_entries ), (int) $post_id
 	) );
 
 	// Let MEC regenerate mec_dates (clean + schedule) from the custom-day list.

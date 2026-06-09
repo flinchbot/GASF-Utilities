@@ -24,24 +24,34 @@ stale scheduled-import breadcrumb posts behind.
 | **A — Cron registration** | #17 | Removes the importer's `setup_sync_cron` (which clears+reschedules its hooks on *every* `init`, so they never mature) and registers the `every_minute` schedule once. |
 | **B — Force FB page defaults** | #20 | Server-side forces `importType=page`,`importTypeVal=GermanTampa` on manual FB imports; defaults the admin date window to today…+60d. |
 | **C — Window response filter** | #19 | On a manual date-range sync, strips out-of-window Facebook events from the Graph API response before the importer parses it. |
-| **D — Recurrence expansion** | #18 | Expands a Facebook recurring event (`event_times`) into one MEC event per occurrence (distinct occurrence id + date, `mec_advimp_recurring=1`, " (recurring)" title). Fires on `added_post_meta` for the FB-id key — which `update_post_meta` triggers on a *new* event insert (`main.php:7591`). **Also stamps the parent FB id as `mec_source_event_id`** on the occurrence post (see "stopping the churn"). |
+| **D — Recurrence (native)** | #18 | Converts a recurring Facebook event into **one native MEC recurring event** (`repeat_type=custom_days` = the explicit occurrence dates), so MEC's own scheduler renders a calendar entry per date. Applied on import (via `added_post_meta`) and re-synced hourly from Facebook by a refresh pass (see below). No per-occurrence posts (those never get `mec_dates` rows and so never render). The post keeps the parent FB id, so the importer's own dedup skips it — no churn. |
 | **E — Dedup sweep** ⭐ | #21 | **The core safety net.** After each importer sync (`mec_advimp_sync_hook` @ priority 999) it collapses duplicate `mec-events`. Does **not** rely on catching any MEC save hook. Inherits the `mec_source_event_id` marker onto the kept post when collapsing. |
 | **F — `request` bloat cap** | (new) | Blocks the importer's `request` postmeta writes outside admin-ajax (i.e. on the cron path — the bloat source), preserving the live manual-import progress UI. |
 
-### Stopping the re-import churn at the source (v1.1.0)
+### Recurring events — native MEC recurrence (v1.2)
 
 A Facebook *recurring* event is returned by the importer as a single parent id (e.g.
-`2124691378103866`); its occurrence #1 is itself a distinct id (e.g. `2124691381437199`,
-the "Oct 31 Biergarten"). MEC's importer keys its dedup on the **parent** id, but after
-Module D runs no post carries the parent id — so every sync re-created the event, Module
-D re-tagged it " (recurring)", and a tag-only duplicate appeared each cycle.
+`2124691378103866`) whose `event_times` lists the occurrences. MEC renders the calendar
+from its own `mec_events`/`mec_dates` tables (built by the `mec_scheduler`), **not** from
+`wp_posts`, so the correct model is **one** MEC event flagged recurring with
+`repeat_type=custom_days` — the explicit occurrence dates — and MEC's scheduler then writes
+a `mec_dates` row per date. (The earlier "one post per occurrence" approach created posts
+that never got `mec_dates` rows, so they never appeared on the calendar.)
 
-The fix makes the importer's **own** dedup recognise the event: Module D stamps the parent
-id as `mec_source_event_id` on the occurrence post (the importer's `remove_exists_event_ids`
-checks that key), and the sweep **inherits** that marker onto the kept (oldest) post when it
-collapses a dup. Once the surviving post carries the marker, the importer skips the recurring
-event entirely — verified live: import #2 self-healed (stamp + inherit), import #3 created
-zero posts.
+`gasf_mec_apply_recurrence()` builds that on the single imported post: it reads
+`event_times`, writes the occurrence dates into `mec_events.days` (format
+`start:end:HH-MM-AMPM:HH-MM-AMPM` per day, times preserved from the event), flags the post
+with `gasf_mec_recurring_parent`, and calls MEC's `reschedule()`.
+
+- **On import** (`added_post_meta` on the FB id): convert if Facebook says it recurs;
+  single events are left untouched.
+- **Hourly refresh pass** (`gasf_mec_refresh_recurring`, on `mec_advimp_sync_hook`,
+  throttled to ~once/hour): re-runs `apply_recurrence` for every flagged series so dates
+  **added or removed on Facebook show up automatically** — Facebook stays the source of truth.
+
+No churn: the post keeps the parent FB id, so the importer's own `remove_exists_event_ids`
+recognises it and never re-creates it. Verified live: the Biergarten renders on all 9 dates
+(Oct 31 → Dec 26) at the correct time, and the refresh pass is idempotent.
 
 ### Dedup key (Module E) — why title matters
 

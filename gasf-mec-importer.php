@@ -31,7 +31,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'GASF_MEC_VERSION', '1.1.0' );
+define( 'GASF_MEC_VERSION', '1.2.0' );
 
 // Log lives OUTSIDE the web root (parent of ABSPATH), not web-fetchable.
 // Falls back silently if unwritable (logging is best-effort).
@@ -278,229 +278,186 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_window' ) ) {
 }
 
 /* =========================================================================
- * MODULE D — Facebook recurrence expansion (replaces snippet #18)
+ * MODULE D — Facebook recurrence as NATIVE MEC recurring events (replaces #18)
  *
- * MEC's importer fetches event_times but ignores it, storing a recurring FB
- * event as one event. Expand each occurrence into its own MEC event (distinct
- * occurrence id + date, mec_advimp_recurring=1, " (recurring)" title tag).
- * Hooks added_post_meta on mec_advimp_facebook_event_id. The static
- * $processing guard prevents recursion when this creates new posts.
+ * A recurring Facebook event is returned by the importer as ONE parent id whose
+ * event_times lists the occurrences. MEC renders from its own mec_events/mec_dates
+ * tables, so the correct model is ONE MEC event marked recurring (repeat_type
+ * 'custom_days' = the explicit occurrence dates) — MEC's scheduler then generates a
+ * calendar entry per date. (The old approach created a post per occurrence; those
+ * never got mec_dates rows, so they never rendered.)
+ *
+ *  - On import: convert the imported post into a native custom_days recurring event
+ *    covering all the Facebook occurrence dates.
+ *  - Hourly refresh pass: re-sync each managed series' dates from Facebook, so dates
+ *    added/removed on Facebook appear automatically (Facebook stays source of truth).
+ *
+ * The post keeps the parent FB id as mec_advimp_facebook_event_id, so the importer's
+ * own remove_exists_event_ids recognises it and never re-creates it (no churn).
+ * Managed posts carry meta gasf_mec_recurring_parent = parent id.
  * ========================================================================= */
+
+/** Facebook Graph token from the importer's stored credential (never hardcoded). */
+function gasf_mec_fb_token() {
+	$config = get_option( 'mec_advimp_auth_facebook', array() );
+	$token  = null;
+	if ( is_array( $config ) ) {
+		foreach ( $config as $account ) {
+			if ( ! empty( $account['access_token'] ) ) {
+				$token = $account['access_token'];
+			}
+		}
+	}
+	return $token;
+}
+
+/**
+ * Convert/refresh a post into a native MEC custom_days recurring event whose dates
+ * match the Facebook recurring event's current occurrences. Idempotent. Returns the
+ * occurrence-date count, or 0 if the event is not (or no longer) recurring.
+ * Preserves the post's existing time-of-day, location, organizer, title, content.
+ */
+function gasf_mec_apply_recurrence( $post_id, $parent_fb_id ) {
+	global $wpdb;
+
+	$token = gasf_mec_fb_token();
+	if ( ! $token ) {
+		return 0;
+	}
+
+	$resp = wp_remote_get(
+		'https://graph.facebook.com/v18.0/' . rawurlencode( $parent_fb_id )
+			. '?fields=id,name,start_time,end_time,event_times,timezone&access_token=' . $token,
+		array( 'timeout' => 15 )
+	);
+	if ( is_wp_error( $resp ) ) {
+		return 0;
+	}
+
+	$event = json_decode( wp_remote_retrieve_body( $resp ) );
+	if ( ! $event || isset( $event->error ) ) {
+		return 0;
+	}
+
+	// Not recurring (or no longer): leave the post as a plain single event.
+	if ( empty( $event->event_times ) || ! is_array( $event->event_times ) || count( $event->event_times ) <= 1 ) {
+		return 0;
+	}
+
+	$tz = isset( $event->timezone ) ? $event->timezone : ( get_option( 'timezone_string' ) ?: 'America/New_York' );
+
+	// Unique occurrence dates (Y-m-d), chronological.
+	$dates = array();
+	foreach ( $event->event_times as $occ ) {
+		if ( empty( $occ->start_time ) ) {
+			continue;
+		}
+		try {
+			$dt = new DateTime( $occ->start_time, new DateTimeZone( $tz ) );
+		} catch ( Exception $e ) {
+			$dt = new DateTime( $occ->start_time );
+		}
+		$dates[ $dt->format( 'Y-m-d' ) ] = true;
+	}
+	$dates = array_keys( $dates );
+	sort( $dates );
+	if ( count( $dates ) <= 1 ) {
+		return 0;
+	}
+
+	$first = $dates[0];
+	$last  = end( $dates );
+	$rest  = array_slice( $dates, 1 ); // render adds the start date itself; days = the rest
+
+	// Preserve the post's existing time-of-day (set by the importer for occurrence #1).
+	$mec_date = get_post_meta( $post_id, 'mec_date', true );
+	if ( ! is_array( $mec_date ) || ! isset( $mec_date['start'] ) || ! isset( $mec_date['end'] ) ) {
+		$mec_date = array(
+			'start' => array( 'date' => $first, 'hour' => '6', 'minutes' => '00', 'ampm' => 'PM' ),
+			'end'   => array( 'date' => $first, 'hour' => '8', 'minutes' => '00', 'ampm' => 'PM' ),
+		);
+	}
+	$mec_date['start']['date'] = $first;
+	$mec_date['end']['date']   = $first;
+	$mec_date['repeat']        = array( 'end' => 'date', 'end_at_date' => $last );
+	$mec_date['allday']        = isset( $mec_date['allday'] ) ? $mec_date['allday'] : 0;
+	$mec_date['hide_time']     = isset( $mec_date['hide_time'] ) ? $mec_date['hide_time'] : 0;
+	$mec_date['hide_end_time'] = isset( $mec_date['hide_end_time'] ) ? $mec_date['hide_end_time'] : 0;
+	$mec_date['comment']       = isset( $mec_date['comment'] ) ? $mec_date['comment'] : '';
+
+	update_post_meta( $post_id, 'mec_repeat_status', 1 );
+	update_post_meta( $post_id, 'mec_repeat_type', 'custom_days' );
+	update_post_meta( $post_id, 'mec_start_date', $first );
+	update_post_meta( $post_id, 'mec_end_date', $first );
+	update_post_meta( $post_id, 'mec_repeat_end', 'date' );
+	update_post_meta( $post_id, 'mec_repeat_end_at_date', $last );
+	update_post_meta( $post_id, 'mec_date', $mec_date );
+	update_post_meta( $post_id, 'gasf_mec_recurring_parent', (string) $parent_fb_id );
+
+	// Update the event's row in MEC's own table; days = the explicit occurrence list.
+	$wpdb->query( $wpdb->prepare(
+		"UPDATE {$wpdb->prefix}mec_events SET `start`=%s, `end`=%s, `repeat`=1, `rinterval`=NULL, `days`=%s WHERE `post_id`=%d",
+		$first, $last, implode( ',', $rest ), (int) $post_id
+	) );
+
+	// Let MEC regenerate mec_dates (clean + schedule) from the custom-day list.
+	if ( class_exists( 'MEC' ) ) {
+		$schedule = MEC::getInstance( 'app.libraries.schedule' );
+		if ( $schedule && method_exists( $schedule, 'reschedule' ) ) {
+			$schedule->reschedule( $post_id, 300 );
+		}
+	}
+
+	gasf_mec_log( sprintf( 'RECUR-NATIVE post=%d parent=%s dates=%d (%s..%s)',
+		(int) $post_id, $parent_fb_id, count( $dates ), $first, $last ) );
+
+	return count( $dates );
+}
+
 if ( gasf_mec_enabled( 'gasf_mec_enable_recurrence' ) ) {
 
+	// On a fresh import of a Facebook event, convert it to a native recurring event
+	// if Facebook says it recurs. Single events are left untouched. No sibling posts.
 	add_action( 'added_post_meta', function ( $mid, $post_id, $meta_key, $meta_value ) {
-
 		if ( $meta_key !== 'mec_advimp_facebook_event_id' ) {
 			return;
 		}
 		if ( get_post_type( $post_id ) !== 'mec-events' ) {
 			return;
 		}
-
-		static $processing = array();
-		if ( isset( $processing[ $meta_value ] ) ) {
+		static $busy = array();
+		if ( isset( $busy[ $meta_value ] ) ) {
 			return;
 		}
-		$processing[ $meta_value ] = true;
-
-		// Manual-sync window (if any).
-		$win_start = null;
-		$win_end   = null;
-		$si = isset( $_POST['start_date'] ) ? sanitize_text_field( wp_unslash( $_POST['start_date'] ) ) : '';
-		$ei = isset( $_POST['end_date'] ) ? sanitize_text_field( wp_unslash( $_POST['end_date'] ) ) : '';
-		if ( $si !== '' && $ei !== '' ) {
-			$win_start = strtotime( $si . ' 00:00:00' );
-			$win_end   = strtotime( $ei . ' 23:59:59' );
-			if ( ! $win_start || ! $win_end ) {
-				$win_start = null;
-				$win_end   = null;
-			}
-		}
-		$in_window = function ( $start_str ) use ( $win_start, $win_end ) {
-			if ( $win_start === null ) {
-				return true;
-			}
-			$t = strtotime( $start_str );
-			return ( $t !== false && $t >= $win_start && $t <= $win_end );
-		};
-
-		$tag = function ( $title ) {
-			return ( substr( $title, -12 ) === ' (recurring)' ) ? $title : $title . ' (recurring)';
-		};
-
-		// Live Facebook token from the importer's stored credential (no hardcoding).
-		$config = get_option( 'mec_advimp_auth_facebook', array() );
-		$token  = null;
-		if ( is_array( $config ) ) {
-			foreach ( $config as $account ) {
-				if ( ! empty( $account['access_token'] ) ) {
-					$token = $account['access_token'];
-				}
-			}
-		}
-		if ( ! $token ) {
-			unset( $processing[ $meta_value ] );
-			return;
-		}
-
-		$url  = 'https://graph.facebook.com/v18.0/' . rawurlencode( $meta_value )
-			. '?fields=id,name,description,start_time,end_time,event_times,timezone,cover,place'
-			. '&access_token=' . $token;
-		$resp = wp_remote_get( $url, array( 'timeout' => 15 ) );
-
-		if ( is_wp_error( $resp ) ) {
-			unset( $processing[ $meta_value ] );
-			return;
-		}
-
-		$event = json_decode( wp_remote_retrieve_body( $resp ) );
-
-		if ( ! $event || isset( $event->error ) || empty( $event->event_times ) || count( $event->event_times ) <= 1 ) {
-			unset( $processing[ $meta_value ] );
-			return;
-		}
-
-		$occurrences = $event->event_times;
-		usort( $occurrences, function ( $a, $b ) {
-			return strtotime( $a->start_time ) <=> strtotime( $b->start_time );
-		} );
-
-		$timezone = isset( $event->timezone ) ? $event->timezone : get_option( 'timezone_string', 'America/New_York' );
-
-		$parse = function ( $time_str, $tz ) {
-			try {
-				$dt = new DateTime( $time_str, new DateTimeZone( $tz ) );
-			} catch ( Exception $e ) {
-				$dt = new DateTime( $time_str );
-			}
-			return array(
-				'date'    => $dt->format( 'Y-m-d' ),
-				'hour'    => $dt->format( 'g' ),
-				'minutes' => $dt->format( 'i' ),
-				'ampm'    => $dt->format( 'A' ),
-			);
-		};
-
-		$apply_dates = function ( $pid, $start_str, $end_str, $tz ) use ( $parse ) {
-			$s = $parse( $start_str, $tz );
-			$e = $end_str ? $parse( $end_str, $tz ) : $s;
-			update_post_meta( $pid, 'mec_start_date', $s['date'] );
-			update_post_meta( $pid, 'mec_end_date', $e['date'] );
-			update_post_meta( $pid, 'mec_start_time_hour', $s['hour'] );
-			update_post_meta( $pid, 'mec_start_time_minutes', $s['minutes'] );
-			update_post_meta( $pid, 'mec_start_time_ampm', $s['ampm'] );
-			update_post_meta( $pid, 'mec_end_time_hour', $e['hour'] );
-			update_post_meta( $pid, 'mec_end_time_minutes', $e['minutes'] );
-			update_post_meta( $pid, 'mec_end_time_ampm', $e['ampm'] );
-			update_post_meta( $pid, 'mec_date', array(
-				'start'         => array( 'date' => $s['date'], 'hour' => $s['hour'], 'minutes' => $s['minutes'], 'ampm' => $s['ampm'] ),
-				'end'           => array( 'date' => $e['date'], 'hour' => $e['hour'], 'minutes' => $e['minutes'], 'ampm' => $e['ampm'] ),
-				'repeat'        => array( 'end' => 'date', 'end_at_date' => $e['date'] ),
-				'allday'        => 0,
-				'hide_time'     => 0,
-				'hide_end_time' => 0,
-				'comment'       => '',
-			) );
-		};
-
-		$location_id    = get_post_meta( $post_id, 'mec_location_id', true );
-		$organizer_id   = get_post_meta( $post_id, 'mec_organizer_id', true );
-		$thumbnail_id   = get_post_thumbnail_id( $post_id );
-		$category_terms = wp_get_object_terms( $post_id, 'mec_category', array( 'fields' => 'ids' ) );
-		$read_more      = 'https://www.facebook.com/events/' . $event->id . '/';
-
-		$created     = 0;
-		$parent_used = false;
-
-		foreach ( $occurrences as $occ ) {
-			$occ_id = $occ->id;
-
-			if ( ! $in_window( $occ->start_time ) ) {
-				continue;
-			}
-
-			if ( ! $parent_used ) {
-				$apply_dates( $post_id, $occ->start_time, isset( $occ->end_time ) ? $occ->end_time : null, $timezone );
-				update_post_meta( $post_id, 'mec_advimp_facebook_event_id', $occ_id );
-				update_post_meta( $post_id, 'mec_advimp_recurring', 1 );
-				// Stamp the PARENT FB id as mec_source_event_id. The importer's own dedup
-				// (sync.php remove_exists_event_ids checks mec_source_event_id) then
-				// recognises the recurring event as already imported and stops re-creating
-				// it every cycle — killing the duplicate-churn at its source. The sweep
-				// inherits this marker onto the kept post if a dup is collapsed.
-				update_post_meta( $post_id, 'mec_source_event_id', $meta_value );
-				$p = get_post( $post_id );
-				if ( $p ) {
-					wp_update_post( array( 'ID' => $post_id, 'post_title' => $tag( $p->post_title ) ) );
-				}
-				$parent_used = true;
-				continue;
-			}
-
-			$processing[ $occ_id ] = true;
-
-			$existing = get_posts( array(
-				'post_type'      => 'mec-events',
-				'post_status'    => 'any',
-				'meta_key'       => 'mec_advimp_facebook_event_id',
-				'meta_value'     => $occ_id,
-				'fields'         => 'ids',
-				'posts_per_page' => 1,
-			) );
-			if ( ! empty( $existing ) ) {
-				unset( $processing[ $occ_id ] );
-				continue;
-			}
-
-			$new_id = wp_insert_post( array(
-				'post_title'   => $tag( $event->name ),
-				'post_content' => isset( $event->description ) ? $event->description : '',
-				'post_status'  => 'publish',
-				'post_type'    => 'mec-events',
-			) );
-			if ( ! $new_id || is_wp_error( $new_id ) ) {
-				unset( $processing[ $occ_id ] );
-				continue;
-			}
-
-			$apply_dates( $new_id, $occ->start_time, isset( $occ->end_time ) ? $occ->end_time : null, $timezone );
-			update_post_meta( $new_id, 'mec_allday', 0 );
-			update_post_meta( $new_id, 'mec_repeat_status', 0 );
-			update_post_meta( $new_id, 'mec_repeat_type', '' );
-			update_post_meta( $new_id, 'mec_source', 'facebook-calendar' );
-			update_post_meta( $new_id, 'mec_advimp_facebook_event_id', $occ_id );
-			update_post_meta( $new_id, 'mec_advimp_recurring', 1 );
-			update_post_meta( $new_id, 'mec_more_info', $read_more );
-			update_post_meta( $new_id, 'mec_read_more', '' );
-			if ( $location_id ) {
-				update_post_meta( $new_id, 'mec_location_id', $location_id );
-			}
-			if ( $organizer_id ) {
-				update_post_meta( $new_id, 'mec_organizer_id', $organizer_id );
-			}
-			if ( ! empty( $category_terms ) ) {
-				wp_set_object_terms( $new_id, $category_terms, 'mec_category' );
-			}
-			if ( $thumbnail_id ) {
-				set_post_thumbnail( $new_id, $thumbnail_id );
-			}
-
-			$created++;
-			unset( $processing[ $occ_id ] );
-		}
-
-		// If NO occurrence fell in the window, the importer-created parent is
-		// out-of-window noise on a manual sync - remove it.
-		if ( ! $parent_used && $win_start !== null ) {
-			wp_delete_post( $post_id, true );
-		}
-
-		gasf_mec_log( sprintf( 'RECUR fb=%s occurrences=%d created=%d parent=%d',
-			$meta_value, count( $occurrences ), $created, (int) $post_id ) );
-
-		unset( $processing[ $meta_value ] );
-
+		$busy[ $meta_value ] = true;
+		gasf_mec_apply_recurrence( $post_id, (string) $meta_value );
+		unset( $busy[ $meta_value ] );
 	}, 10, 4 );
+
+	// Hourly refresh: re-sync every managed recurring series from Facebook so dates
+	// added/removed on Facebook show up. Throttled to ~once an hour across all series.
+	function gasf_mec_refresh_recurring() {
+		$last = (int) get_option( 'gasf_mec_recur_refresh_at', 0 );
+		if ( ( time() - $last ) < 3300 ) {
+			return;
+		}
+		update_option( 'gasf_mec_recur_refresh_at', time() );
+
+		$ids = get_posts( array(
+			'post_type'      => 'mec-events',
+			'post_status'    => 'publish',
+			'meta_key'       => 'gasf_mec_recurring_parent',
+			'fields'         => 'ids',
+			'posts_per_page' => -1,
+		) );
+		foreach ( $ids as $pid ) {
+			$parent = get_post_meta( $pid, 'gasf_mec_recurring_parent', true );
+			if ( $parent ) {
+				gasf_mec_apply_recurrence( $pid, $parent );
+			}
+		}
+	}
+	add_action( 'mec_advimp_sync_hook', 'gasf_mec_refresh_recurring', 998 );
 }
 
 /* =========================================================================

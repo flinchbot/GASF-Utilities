@@ -31,7 +31,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'GASF_MEC_VERSION', '1.2.0' );
+define( 'GASF_MEC_VERSION', '1.2.1' );
 
 // Log lives OUTSIDE the web root (parent of ABSPATH), not web-fetchable.
 // Falls back silently if unwritable (logging is best-effort).
@@ -394,10 +394,27 @@ function gasf_mec_apply_recurrence( $post_id, $parent_fb_id ) {
 	update_post_meta( $post_id, 'mec_date', $mec_date );
 	update_post_meta( $post_id, 'gasf_mec_recurring_parent', (string) $parent_fb_id );
 
+	// Build the custom-day list in MEC's format: "startdate:enddate:HH-MM-AMPM:HH-MM-AMPM"
+	// per occurrence (render.php reads cday[0]=start date, cday[1]=end date, cday[2]=start
+	// time, cday[3]=end time). Times come from the event's own mec_date so every occurrence
+	// keeps the same time-of-day.
+	$sh = (int) ( $mec_date['start']['hour'] ?? 6 );
+	$sm = (int) ( $mec_date['start']['minutes'] ?? 0 );
+	$sa = $mec_date['start']['ampm'] ?? 'PM';
+	$eh = (int) ( $mec_date['end']['hour'] ?? 8 );
+	$em = (int) ( $mec_date['end']['minutes'] ?? 0 );
+	$ea = $mec_date['end']['ampm'] ?? 'PM';
+	$st_str = sprintf( '%02d-%02d-%s', $sh, $sm, $sa );
+	$et_str = sprintf( '%02d-%02d-%s', $eh, $em, $ea );
+	$day_entries = array();
+	foreach ( $rest as $d ) {
+		$day_entries[] = $d . ':' . $d . ':' . $st_str . ':' . $et_str;
+	}
+
 	// Update the event's row in MEC's own table; days = the explicit occurrence list.
 	$wpdb->query( $wpdb->prepare(
 		"UPDATE {$wpdb->prefix}mec_events SET `start`=%s, `end`=%s, `repeat`=1, `rinterval`=NULL, `days`=%s WHERE `post_id`=%d",
-		$first, $last, implode( ',', $rest ), (int) $post_id
+		$first, $last, implode( ',', $day_entries ), (int) $post_id
 	) );
 
 	// Let MEC regenerate mec_dates (clean + schedule) from the custom-day list.

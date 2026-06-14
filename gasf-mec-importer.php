@@ -667,3 +667,10 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_single_template' ) ) {
 		wp_add_inline_style( 'gasf-events', file_get_contents( $css ) );
 	} );
 }
+
+/* === MIGRATED-SNIPPET-MODULES-LOADER : load migrated Code-Snippet modules (task 260614-gj8) ===
+ * Each file in modules/ self-gates via gasf_mec_enabled(). */
+foreach ( glob( __DIR__ . "/modules/*.php" ) as $gasf_mec_mod ) {
+	require_once $gasf_mec_mod;
+}
+unset( $gasf_mec_mod );

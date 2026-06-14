@@ -638,10 +638,21 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_reqcap' ) ) {
  * ========================================================================= */
 if ( gasf_mec_enabled( 'gasf_mec_enable_single_template' ) ) {
 
-	add_filter( 'mec_single_event_template', function ( $template ) {
-		$custom = __DIR__ . '/templates/single-mec-events.php';
-		return file_exists( $custom ) ? $custom : $template;
-	}, 99 );
+	// MEC has NO 'mec_single_event_template' filter (the old Code Snippet #8 hooked a
+	// non-existent filter, so it never actually swapped the template — the theme-dir
+	// file was picked up by locate_template() instead, and the 2026-06-08 reinstall
+	// wiped it). MEC chooses the single template on 'template_include' at priority 99
+	// (app/libraries/factory.php -> parser::template -> locate_template). Hook at 100
+	// to override MEC's choice with our git-tracked template.
+	add_filter( 'template_include', function ( $template ) {
+		if ( is_singular( 'mec-events' ) ) {
+			$custom = __DIR__ . '/templates/single-mec-events.php';
+			if ( file_exists( $custom ) ) {
+				return $custom;
+			}
+		}
+		return $template;
+	}, 100 );
 
 	add_action( 'wp_enqueue_scripts', function () {
 		if ( ! is_singular( 'mec-events' ) ) {

@@ -24,6 +24,7 @@
  *   gasf_mec_enable_recurrence  Module D  - FB recurrence expansion (replaces #18)
  *   gasf_mec_enable_sweep       Module E  - deterministic dedup sweep (replaces #21)
  *   gasf_mec_enable_reqcap      Module F  - 'request' meta bloat cap (new)
+ *   gasf_mec_enable_single_template Module G - branded single-event template + CSS (replaces #8/#9)
  *   gasf_mec_sweep_dryrun       DEFAULT ON - sweep only logs; set '0' to delete
  */
 
@@ -31,7 +32,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'GASF_MEC_VERSION', '1.2.2' );
+define( 'GASF_MEC_VERSION', '1.3.0' );
 
 // Log lives OUTSIDE the web root (parent of ABSPATH), not web-fetchable.
 // Falls back silently if unwritable (logging is best-effort).
@@ -625,4 +626,33 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_reqcap' ) ) {
 		}
 		return $check; // null normally -> proceed as usual
 	}, 10, 5 );
+}
+
+/* =========================================================================
+ * Module G - Branded single-event template + CSS  (replaces Code Snippets #8/#9)
+ *
+ * Points MEC at our git-tracked single-event template and injects gasf-events.css
+ * inline (the mu-plugin dir lives OUTSIDE the web root, so plugins_url() can't
+ * resolve it). Survives WordPress theme reinstalls - no theme-dir dependency.
+ * Gate: gasf_mec_enable_single_template (default ON).
+ * ========================================================================= */
+if ( gasf_mec_enabled( 'gasf_mec_enable_single_template' ) ) {
+
+	add_filter( 'mec_single_event_template', function ( $template ) {
+		$custom = __DIR__ . '/templates/single-mec-events.php';
+		return file_exists( $custom ) ? $custom : $template;
+	}, 99 );
+
+	add_action( 'wp_enqueue_scripts', function () {
+		if ( ! is_singular( 'mec-events' ) ) {
+			return;
+		}
+		$css = __DIR__ . '/assets/gasf-events.css';
+		if ( ! is_readable( $css ) ) {
+			return;
+		}
+		wp_register_style( 'gasf-events', false );
+		wp_enqueue_style( 'gasf-events' );
+		wp_add_inline_style( 'gasf-events', file_get_contents( $css ) );
+	} );
 }

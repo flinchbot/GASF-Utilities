@@ -1,0 +1,287 @@
+/*
+ * gasf-events.css
+ * MEC Single Event Page — Custom Template Styles
+ * German-American Society Friendship (GASF) — germantampabay.com
+ *
+ * ENQUEUE: Via Code Snippet using wp_enqueue_scripts + is_singular('mec-events')
+ * TEMPLATE: Works with single-mec-events.php in the Hoot Du Premium theme root
+ *
+ * All classes prefixed "gasf-" to avoid conflicts with MEC, theme, or plugin CSS.
+ * Colors match the site event list palette (Sections 9/11 of global stylesheet):
+ *   Titles    → --of-pink      (#ff6b6b)
+ *   Labels    → --of-turquoise (#00ced1)
+ *   Accents   → --of-teal      (#339999)
+ *   Body text → #e0d8c8
+ *   Card bg   → rgba(255,255,255,0.04)
+ */
+
+/* ── Full width fix for Hoot Du theme on event pages ── */
+body.single-mec-events .content-area,
+body.single-mec-events #main,
+body.single-mec-events .site-content,
+body.single-mec-events .main-container {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 0 !important;
+}
+
+/* ── Page wrapper ── */
+#gasf-event-page {
+  background: #000;
+  min-height: 60vh;
+  padding: 2rem 0 4rem;
+  font-family: var(--font-body);
+}
+
+/* ── Centered content container ── */
+.gasf-event-container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* ── Back link — top and bottom ── */
+.gasf-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--of-turquoise) !important;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-decoration: none !important;
+  margin-bottom: 1.75rem;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+.gasf-back-link:hover {
+  opacity: 1;
+  color: var(--of-turquoise) !important;
+}
+.gasf-back-arrow {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* ── Event title ── */
+.gasf-event-title {
+  font-family: var(--font-display) !important;
+  font-size: 2.6rem !important;
+  font-weight: 700 !important;
+  color: var(--of-pink) !important;
+  line-height: 1.15 !important;
+  margin: 0 0 2rem !important;
+  text-shadow: none !important;
+  text-align: left !important;
+}
+@media (max-width: 640px) {
+  .gasf-event-title {
+    font-size: 1.9rem !important;
+  }
+}
+
+/* ── Hero row: two-column flex ── */
+.gasf-hero-row {
+  display: flex;
+  gap: 2.5rem;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+@media (max-width: 680px) {
+  .gasf-hero-row {
+    flex-direction: column-reverse;
+    gap: 1.5rem;
+  }
+}
+
+/* ── Left column: meta blocks ── */
+.gasf-event-meta {
+  flex: 0 0 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+@media (max-width: 680px) {
+  .gasf-event-meta {
+    flex: none;
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+}
+
+/* Individual meta block */
+.gasf-meta-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border-left: 3px solid var(--of-turquoise);
+  padding-left: 0.875rem;
+}
+@media (max-width: 680px) {
+  .gasf-meta-block {
+    flex: 1;
+    min-width: 130px;
+  }
+}
+
+/* "DATE" / "TIME" / "LOCATION" labels */
+.gasf-meta-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--of-turquoise);
+  font-family: var(--font-body);
+  line-height: 1;
+}
+
+/* Date/time/location values */
+.gasf-meta-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ffffff;
+  font-family: var(--font-body);
+  line-height: 1.4;
+}
+.gasf-meta-value small {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: rgba(255,255,255,0.5);
+  display: block;
+  margin-top: 0.15rem;
+}
+
+/* ── Calendar buttons ── */
+.gasf-cal-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+}
+@media (max-width: 680px) {
+  .gasf-cal-buttons {
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+}
+
+.gasf-cal-btn {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none !important;
+  text-align: center;
+  transition: background 0.2s ease, color 0.2s ease;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Google Calendar — filled turquoise */
+.gasf-cal-btn--google {
+  background: var(--of-turquoise);
+  color: #000000 !important;
+}
+.gasf-cal-btn--google:hover {
+  background: var(--of-teal);
+  color: #ffffff !important;
+}
+
+/* iCal / Outlook — outlined */
+.gasf-cal-btn--ical {
+  background: transparent;
+  color: var(--of-turquoise) !important;
+  border: 1px solid var(--of-turquoise);
+}
+.gasf-cal-btn--ical:hover {
+  background: var(--of-turquoise);
+  color: #000000 !important;
+}
+
+/* ── Right column: hero image ── */
+/* object-fit: contain prevents cropping of portrait/square poster images.
+   background: #111 fills letterbox space on landscape images.
+   align-self: flex-start prevents stretching to match meta column height. */
+.gasf-event-image {
+  flex: 1;
+  min-width: 0;
+  border-radius: var(--radius-l);
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  border: 1px solid rgba(0,206,209,0.2);
+  max-height: 400px;
+  align-self: flex-start;
+  background: #111;
+}
+.gasf-event-image img {
+  width: 100% !important;
+  height: auto !important;
+  max-height: 400px !important;
+  max-width: 100% !important;
+  object-fit: contain !important;
+  object-position: center top !important;
+  display: block !important;
+  margin: 0 !important;
+}
+
+/* ── Event description card ── */
+.gasf-event-description {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(0,206,209,0.15);
+  border-radius: var(--radius-l);
+  padding: 1.75rem 2rem;
+  margin-bottom: 2rem;
+  font-family: var(--font-body);
+}
+
+/* All text inside description */
+.gasf-event-description,
+.gasf-event-description p,
+.gasf-event-description li,
+.gasf-event-description span {
+  color: #e0d8c8 !important;
+  font-size: 1rem !important;
+  line-height: 1.8 !important;
+  text-shadow: none !important;
+  text-align: left !important;
+}
+.gasf-event-description p {
+  margin-bottom: 0.875em !important;
+}
+.gasf-event-description p:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* Headings inside description */
+.gasf-event-description h2,
+.gasf-event-description h3 {
+  color: var(--of-pink) !important;
+  font-family: var(--font-display) !important;
+  margin-top: 1.25em !important;
+  text-align: left !important;
+}
+
+/* Links inside description */
+.gasf-event-description a {
+  color: var(--of-turquoise) !important;
+  text-decoration: underline !important;
+}
+.gasf-event-description a:hover {
+  color: var(--of-teal) !important;
+}
+
+/* ── Bottom nav ── */
+.gasf-bottom-nav {
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.gasf-bottom-nav .gasf-back-link {
+  margin-bottom: 0;
+}

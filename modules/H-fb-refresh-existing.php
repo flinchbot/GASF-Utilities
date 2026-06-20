@@ -133,6 +133,7 @@ function gasf_mec_sideload_cover( $post_id, $cover ) {
 	static $count = 0;
 	if ( $count >= 8 ) return false; // per-run cap; uncapped events retry next cycle
 	if ( empty( $cover->source ) ) return false;
+	$old_thumb = (int) get_post_thumbnail_id( $post_id );
 	$cover_id = isset($cover->id) ? (string)$cover->id : md5($cover->source);
 	if ( ! function_exists( 'media_handle_sideload' ) ) {
 		require_once ABSPATH.'wp-admin/includes/media.php'; require_once ABSPATH.'wp-admin/includes/file.php'; require_once ABSPATH.'wp-admin/includes/image.php';
@@ -144,7 +145,30 @@ function gasf_mec_sideload_cover( $post_id, $cover ) {
 	set_post_thumbnail( $post_id, $att );
 	update_post_meta( $post_id, 'gasf_mec_fb_cover_id', $cover_id );
 	$count++;
+	// orphan cleanup: delete the image we just replaced if nothing else uses it
+	if ( $old_thumb && $old_thumb !== (int) $att && ! gasf_mec_attachment_in_use( $old_thumb, $post_id ) ) {
+		wp_delete_attachment( $old_thumb, true );
+		if ( function_exists( 'gasf_mec_log' ) ) gasf_mec_log( 'FB-IMG-ORPHAN deleted attachment=' . $old_thumb . ' (replaced on post=' . $post_id . ')' );
+	}
 	return $att;
+}
+
+function gasf_mec_attachment_in_use( $att_id, $exclude_post ) {
+	global $wpdb;
+	$att_id = (int) $att_id;
+	// used as another post's featured image?
+	if ( (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}postmeta WHERE meta_key='_thumbnail_id' AND meta_value=%d AND post_id<>%d", $att_id, (int) $exclude_post ) ) ) return true;
+	$url = wp_get_attachment_url( $att_id );
+	$base = $url ? basename( parse_url( $url, PHP_URL_PATH ) ) : '';
+	$base = $base ? preg_replace( '/-\\d+x\\d+(?=\\.\\w+$)/', '', $base ) : '';
+	$base = $base ? preg_replace( '/\\.\\w+$/', '', $base ) : '';
+	if ( $base ) {
+		// embedded in post content (by filename or wp-image-<id> class)?
+		if ( (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}posts WHERE post_status NOT IN ('trash') AND ( post_content LIKE %s OR post_content LIKE %s )", '%' . $wpdb->esc_like( $base ) . '%', '%wp-image-' . $att_id . '%' ) ) ) return true;
+		// referenced in SiteOrigin page-builder data?
+		if ( (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}postmeta WHERE meta_key='panels_data' AND ( meta_value LIKE %s OR meta_value LIKE %s )", '%' . $wpdb->esc_like( $base ) . '%', '%"' . $att_id . '"%' ) ) ) return true;
+	}
+	return false;
 }
 
 function gasf_mec_fb_refresh_all() {

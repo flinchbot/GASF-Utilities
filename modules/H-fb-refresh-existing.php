@@ -89,11 +89,8 @@ function gasf_mec_fb_refresh_event( $post_id, $dry_run = false ) {
 	// featured image (cover): baseline existing on first sight; only sync genuine changes
 	if ( isset( $ev->cover->source ) ) {
 		$cover_id = isset( $ev->cover->id ) ? (string) $ev->cover->id : md5( $ev->cover->source );
-		$stored = get_post_meta( $post_id, 'gasf_mec_fb_cover_id', true );
-		if ( $stored === '' ) {
-			if ( ! $dry_run ) update_post_meta( $post_id, 'gasf_mec_fb_cover_id', $cover_id ); // baseline, no download
-		} elseif ( $stored !== $cover_id ) {
-			$changes['image'] = true; $audit[] = 'image: cover changed';
+		if ( get_post_meta( $post_id, 'gasf_mec_fb_cover_id', true ) !== $cover_id ) {
+			$changes['image'] = true; $audit[] = 'image: cover synced';
 		}
 	}
 
@@ -133,6 +130,8 @@ function gasf_mec_write_time_meta_only( $post_id, $f ) {
 }
 
 function gasf_mec_sideload_cover( $post_id, $cover ) {
+	static $count = 0;
+	if ( $count >= 8 ) return false; // per-run cap; uncapped events retry next cycle
 	if ( empty( $cover->source ) ) return false;
 	$cover_id = isset($cover->id) ? (string)$cover->id : md5($cover->source);
 	if ( ! function_exists( 'media_handle_sideload' ) ) {
@@ -144,6 +143,7 @@ function gasf_mec_sideload_cover( $post_id, $cover ) {
 	if ( is_wp_error( $att ) ) { @unlink($tmp); return false; }
 	set_post_thumbnail( $post_id, $att );
 	update_post_meta( $post_id, 'gasf_mec_fb_cover_id', $cover_id );
+	$count++;
 	return $att;
 }
 

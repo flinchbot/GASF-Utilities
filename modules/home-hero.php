@@ -4,7 +4,10 @@
  *
  * Adds the [gas_hero] shortcode + a "Home Page Hero" admin screen that lets a
  * maintainer schedule the large image at the top of the home page. Each entry is
- * { image, optional caption, optional button label+URL, activation datetime }.
+ * { image, optional image link, optional caption, optional button label + button
+ * link, activation datetime }. Two independent links:
+ *   - Image link  -> makes the whole image clickable.
+ *   - Button link -> renders a button below the caption (can differ from the image link).
  *
  * The ACTIVE hero = the entry whose activation time is the latest one already
  * passed; future entries queue, and the current one stays up until the next
@@ -50,6 +53,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 			gasf_hero_save_entries( array( array(
 				'id'           => 'seed_18254',
 				'image_id'     => 18254,
+				'image_url'    => 'https://germantampabay.com/world-cup/',
 				'caption'      => '',
 				'button_label' => '',
 				'button_url'   => '',
@@ -66,14 +70,23 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		$e = gasf_hero_active();
 		if ( ! $e ) { return ''; }
 		$img = wp_get_attachment_image( (int) $e['image_id'], 'full', false, array(
-			'class'   => 'gasf-hero__img',
-			'alt'     => $e['caption'] !== '' ? esc_attr( wp_strip_all_tags( $e['caption'] ) ) : get_bloginfo( 'name' ),
-			'loading' => 'eager',
+			'class' => 'gasf-hero__img',
+			'alt'   => $e['caption'] !== '' ? esc_attr( wp_strip_all_tags( $e['caption'] ) ) : get_bloginfo( 'name' ),
 		) );
 		if ( ! $img ) { return ''; }
 
+		// Hero is above the fold: force a single eager load + high priority (no duplicate loading attr).
+		$img = preg_replace( '/\sloading="[^"]*"/', '', $img );
+		$img = preg_replace( '/<img /', '<img loading="eager" fetchpriority="high" ', $img, 1 );
+
+		// Whole image clickable when an image link is set (independent of the button link).
+		$image_url = isset( $e['image_url'] ) ? trim( $e['image_url'] ) : '';
+		if ( $image_url !== '' ) {
+			$img = '<a class="gasf-hero__imglink" href="' . esc_url( $image_url ) . '">' . $img . '</a>';
+		}
+
 		$has_caption = trim( $e['caption'] ) !== '';
-		$has_button  = trim( $e['button_url'] ) !== '';
+		$has_button  = isset( $e['button_url'] ) && trim( $e['button_url'] ) !== '';
 
 		$out  = gasf_hero_css();
 		$out .= '<figure class="gasf-hero">' . $img;
@@ -98,6 +111,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		$done = true;
 		return '<style>'
 			. '.gasf-hero{margin:0;width:100%}'
+			. '.gasf-hero__imglink{display:block}'
 			. '.gasf-hero__img{display:block;width:100%;height:auto}'
 			. '.gasf-hero__cap{text-align:center;padding:14px 16px}'
 			. '.gasf-hero__text{font-size:1.1rem;line-height:1.45;max-width:760px;margin:0 auto 12px}'
@@ -164,6 +178,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 				$entries[] = array(
 					'id'           => uniqid( 'hero_', true ),
 					'image_id'     => $image_id,
+					'image_url'    => esc_url_raw( wp_unslash( $_POST['gasf_hero_image_url'] ?? '' ) ),
 					'caption'      => wp_kses_post( wp_unslash( $_POST['gasf_hero_caption'] ?? '' ) ),
 					'button_label' => sanitize_text_field( wp_unslash( $_POST['gasf_hero_button_label'] ?? '' ) ),
 					'button_url'   => esc_url_raw( wp_unslash( $_POST['gasf_hero_button_url'] ?? '' ) ),
@@ -185,7 +200,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		?>
 		<div class="wrap">
 			<h1>Home Page Hero</h1>
-			<p>Schedule the large image at the top of the home page. Choose an image, optionally add a caption and a button, and set when it goes live. At its scheduled time it automatically replaces whatever is showing.</p>
+			<p>Schedule the large image at the top of the home page. Choose an image, optionally make it clickable, add a caption and a button, and set when it goes live. At its scheduled time it automatically replaces whatever is showing.</p>
 
 			<h2 class="title">Add / schedule a hero</h2>
 			<form method="post">
@@ -200,6 +215,11 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 						</td>
 					</tr>
 					<tr>
+						<th scope="row"><label for="gasf_hero_image_url">Image link (optional)</label></th>
+						<td><input type="url" id="gasf_hero_image_url" name="gasf_hero_image_url" class="regular-text" placeholder="https://…">
+						<p class="description">Makes the whole image clickable. Can be different from the button link below.</p></td>
+					</tr>
+					<tr>
 						<th scope="row"><label for="gasf_hero_caption">Caption (optional)</label></th>
 						<td><textarea id="gasf_hero_caption" name="gasf_hero_caption" rows="3" class="large-text" placeholder="Shown below the image. Basic HTML / links allowed."></textarea></td>
 					</tr>
@@ -209,7 +229,8 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 					</tr>
 					<tr>
 						<th scope="row"><label for="gasf_hero_button_url">Button link (optional)</label></th>
-						<td><input type="url" id="gasf_hero_button_url" name="gasf_hero_button_url" class="regular-text" placeholder="https://…"></td>
+						<td><input type="url" id="gasf_hero_button_url" name="gasf_hero_button_url" class="regular-text" placeholder="https://…">
+						<p class="description">A URL here adds a button below the caption.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="gasf_hero_activate_at">Go live on</label></th>
@@ -224,7 +245,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 
 			<h2 class="title">Scheduled heroes</h2>
 			<table class="widefat striped">
-				<thead><tr><th>Image</th><th>Goes live</th><th>Status</th><th>Caption / button</th><th></th></tr></thead>
+				<thead><tr><th>Image</th><th>Goes live</th><th>Status</th><th>Links / caption</th><th></th></tr></thead>
 				<tbody>
 				<?php if ( ! $entries ) : ?>
 					<tr><td colspan="5">No heroes yet.</td></tr>
@@ -234,6 +255,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 						? '<strong style="color:#1a7f37">● LIVE NOW</strong>'
 						: ( $ts > $now ? '<span style="color:#8250df">queued</span>' : '<span style="color:#888">past</span>' );
 					$thumb  = wp_get_attachment_image( (int) $e['image_id'], array( 90, 90 ) );
+					$img_url = isset( $e['image_url'] ) ? $e['image_url'] : '';
 				?>
 					<tr>
 						<td><?php echo $thumb ? $thumb : '#' . (int) $e['image_id']; // phpcs:ignore ?></td>
@@ -241,9 +263,10 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 						<td><?php echo $status; // phpcs:ignore ?></td>
 						<td>
 							<?php
-							echo $e['caption'] !== '' ? esc_html( wp_trim_words( wp_strip_all_tags( $e['caption'] ), 12 ) ) : '—';
-							if ( $e['button_url'] !== '' ) {
-								echo '<br><small>btn: ' . esc_html( $e['button_label'] !== '' ? $e['button_label'] : 'Learn More' ) . ' &rarr; ' . esc_html( $e['button_url'] ) . '</small>';
+							if ( $img_url !== '' ) { echo '<small>image &rarr; ' . esc_html( $img_url ) . '</small><br>'; }
+							echo $e['caption'] !== '' ? esc_html( wp_trim_words( wp_strip_all_tags( $e['caption'] ), 12 ) ) : ( $img_url !== '' ? '' : '—' );
+							if ( isset( $e['button_url'] ) && $e['button_url'] !== '' ) {
+								echo '<br><small>button: ' . esc_html( $e['button_label'] !== '' ? $e['button_label'] : 'Learn More' ) . ' &rarr; ' . esc_html( $e['button_url'] ) . '</small>';
 							}
 							?>
 						</td>

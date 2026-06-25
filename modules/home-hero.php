@@ -195,6 +195,30 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		return $out;
 	}
 
+	/* ---------- event end-time label for the scheduled-heroes table ---------- */
+	function gasf_hero_event_end_label( $event_id ) {
+		$dash = '<span style="color:#999">&mdash;</span>';
+		if ( ! $event_id ) { return $dash; }
+		$p = get_post( $event_id );
+		if ( ! $p || $p->post_type !== 'mec-events' ) { return $dash; }
+		global $wpdb;
+		$tz  = wp_timezone();
+		$sd  = get_post_meta( $event_id, 'mec_start_date', true );
+		$ed  = get_post_meta( $event_id, 'mec_end_date', true );
+		if ( ! $sd ) { return $dash; }
+		$row    = $wpdb->get_row( $wpdb->prepare( "SELECT time_start, time_end FROM {$wpdb->prefix}mec_events WHERE post_id=%d LIMIT 1", $event_id ) );
+		$tstart = $row ? (int) $row->time_start : 0;
+		$tend   = $row ? (int) $row->time_end : 0;
+		$start  = ( new DateTime( $sd, $tz ) )->modify( "+{$tstart} seconds" );
+		$end    = ( new DateTime( ( $ed ?: $sd ), $tz ) )->modify( "+{$tend} seconds" );
+		if ( $end->getTimestamp() > $start->getTimestamp() ) {
+			return esc_html( wp_date( 'M j, Y g:i a', $end->getTimestamp() ) );
+		}
+		// no recorded end time -> show the start time with an asterisk
+		return esc_html( wp_date( 'M j, Y g:i a', $start->getTimestamp() ) )
+			. ' <abbr title="No recorded end time" style="text-decoration:none;color:#b3122b;font-weight:700">*</abbr>';
+	}
+
 	/* ---------- admin screen ---------- */
 	add_action( 'admin_menu', function () {
 		if ( function_exists( 'gasf_utilities_add_tab' ) ) {
@@ -238,6 +262,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 					'button_label' => sanitize_text_field( wp_unslash( $_POST['gasf_hero_button_label'] ?? '' ) ),
 					'button_url'   => esc_url_raw( wp_unslash( $_POST['gasf_hero_button_url'] ?? '' ) ),
 					'activate_at'  => $ts,
+					'event_id'     => (int) ( $_POST['gasf_hero_event_id'] ?? 0 ),
 					'created'      => time(),
 				);
 				gasf_hero_save_entries( $entries );
@@ -265,7 +290,8 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 						data-image-id="<?php echo (int) $ev['image_id']; ?>"
 						data-thumb="<?php echo esc_attr( $ev['thumb'] ); ?>"
 						data-url="<?php echo esc_attr( $ev['url'] ); ?>"
-						data-activate="<?php echo esc_attr( $ev['activate'] ); ?>">
+						data-activate="<?php echo esc_attr( $ev['activate'] ); ?>"
+						data-event-id="<?php echo (int) $ev['id']; ?>">
 						<?php if ( $ev['thumb'] ) : ?><img src="<?php echo esc_url( $ev['thumb'] ); ?>" alt=""><?php endif; ?>
 						<span class="gasf-hero-up__t"><?php echo esc_html( $ev['title'] ); ?></span>
 						<span class="gasf-hero-up__d"><?php echo esc_html( $ev['when'] ); ?></span>
@@ -290,6 +316,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 						<th scope="row">Image</th>
 						<td>
 							<input type="hidden" id="gasf_hero_image_id" name="gasf_hero_image_id" value="">
+							<input type="hidden" id="gasf_hero_event_id" name="gasf_hero_event_id" value="">
 							<div id="gasf_hero_preview" style="margin-bottom:8px;max-width:460px"></div>
 							<button type="button" class="button" id="gasf_hero_pick">Choose image from Media Library</button>
 						</td>
@@ -330,10 +357,10 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 
 			<h3 class="title">Scheduled heroes</h3>
 			<table class="widefat striped">
-				<thead><tr><th>Image</th><th>Goes live</th><th>Status</th><th>Links / caption</th><th></th></tr></thead>
+				<thead><tr><th>Image</th><th>Goes live</th><th>Event end</th><th>Status</th><th>Links / caption</th><th></th></tr></thead>
 				<tbody>
 				<?php if ( ! $entries ) : ?>
-					<tr><td colspan="5">No heroes yet.</td></tr>
+					<tr><td colspan="6">No heroes yet.</td></tr>
 				<?php else : foreach ( array_reverse( $entries ) as $e ) :
 					$ts     = (int) $e['activate_at'];
 					$status = ( $e['id'] === $active_id )
@@ -345,6 +372,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 					<tr>
 						<td><?php echo $thumb ? $thumb : '#' . (int) $e['image_id']; // phpcs:ignore ?></td>
 						<td><?php echo esc_html( wp_date( 'M j, Y g:i a', $ts ) ); ?></td>
+						<td><?php echo gasf_hero_event_end_label( isset( $e['event_id'] ) ? (int) $e['event_id'] : 0 ); // phpcs:ignore ?></td>
 						<td><?php echo $status; // phpcs:ignore ?></td>
 						<td>
 							<?php
@@ -384,6 +412,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 			$('.gasf-hero-up__item').on('click', function(){
 				var b = $(this);
 				$('#gasf_hero_image_id').val( b.data('image-id') || '' );
+				$('#gasf_hero_event_id').val( b.data('event-id') || '' );
 				$('#gasf_hero_image_url').val( b.data('url') || '' );
 				$('#gasf_hero_activate_at').val( b.data('activate') || '' );
 				var t = b.data('thumb');

@@ -54,6 +54,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 				'id'           => 'seed_18254',
 				'image_id'     => 18254,
 				'image_url'    => 'https://germantampabay.com/world-cup/',
+				'max_width'    => 450,
 				'caption'      => '',
 				'button_label' => '',
 				'button_url'   => '',
@@ -88,8 +89,10 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		$has_caption = trim( $e['caption'] ) !== '';
 		$has_button  = isset( $e['button_url'] ) && trim( $e['button_url'] ) !== '';
 
+		$mw        = isset( $e['max_width'] ) ? (int) $e['max_width'] : 0;
+		$fig_style = $mw > 0 ? ' style="max-width:' . $mw . 'px;margin-left:auto;margin-right:auto"' : '';
 		$out  = gasf_hero_css();
-		$out .= '<figure class="gasf-hero">' . $img;
+		$out .= '<figure class="gasf-hero"' . $fig_style . '>' . $img;
 		if ( $has_caption || $has_button ) {
 			$out .= '<figcaption class="gasf-hero__cap">';
 			if ( $has_caption ) {
@@ -179,6 +182,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 					'id'           => uniqid( 'hero_', true ),
 					'image_id'     => $image_id,
 					'image_url'    => esc_url_raw( wp_unslash( $_POST['gasf_hero_image_url'] ?? '' ) ),
+					'max_width'    => max( 0, (int) ( $_POST['gasf_hero_max_width'] ?? 0 ) ),
 					'caption'      => wp_kses_post( wp_unslash( $_POST['gasf_hero_caption'] ?? '' ) ),
 					'button_label' => sanitize_text_field( wp_unslash( $_POST['gasf_hero_button_label'] ?? '' ) ),
 					'button_url'   => esc_url_raw( wp_unslash( $_POST['gasf_hero_button_url'] ?? '' ) ),
@@ -213,6 +217,11 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 							<div id="gasf_hero_preview" style="margin-bottom:8px;max-width:460px"></div>
 							<button type="button" class="button" id="gasf_hero_pick">Choose image from Media Library</button>
 						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="gasf_hero_max_width">Display width (optional)</label></th>
+						<td><input type="number" id="gasf_hero_max_width" name="gasf_hero_max_width" class="small-text" min="0" step="10" placeholder="450"> px
+						<p class="description">Max image width, centered. Leave blank or 0 for full width.</p></td>
 					</tr>
 					<tr>
 						<th scope="row"><label for="gasf_hero_image_url">Image link (optional)</label></th>

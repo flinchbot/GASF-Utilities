@@ -281,9 +281,9 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 			<h2>Home Page Hero</h2>
 			<p>Schedule the large image at the top of the home page. Choose an image, optionally make it clickable, add a caption and a button, and set when it goes live. At its scheduled time it automatically replaces whatever is showing.</p>
 
-			<?php $gasf_hero_up = gasf_hero_upcoming_events( 7 ); if ( $gasf_hero_up ) : ?>
+			<?php $gasf_hero_up = gasf_hero_upcoming_events( 14 ); if ( $gasf_hero_up ) : ?>
 			<h3 class="title">Quick-create from an upcoming event</h3>
-			<p>Next 7 days from the calendar. Click one to pre-fill the form below with its image &amp; link and a go-live time <strong>72&nbsp;hours before</strong> the event &mdash; then edit and schedule.</p>
+			<p>Next 14 days from the calendar. Click one to pre-fill the form below with its image &amp; link and a go-live time <strong>72&nbsp;hours before</strong> the event &mdash; then edit and schedule.</p>
 			<div class="gasf-hero-up">
 				<?php foreach ( $gasf_hero_up as $ev ) : ?>
 					<button type="button" class="gasf-hero-up__item"

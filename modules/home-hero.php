@@ -151,6 +151,50 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		}
 	}
 
+	/* ---------- upcoming MEC events (next N days) for quick-create ---------- */
+	function gasf_hero_upcoming_events( $days = 7 ) {
+		global $wpdb;
+		$tz    = wp_timezone();
+		$today = ( new DateTime( 'now', $tz ) )->format( 'Y-m-d' );
+		$end   = ( new DateTime( "+$days days", $tz ) )->format( 'Y-m-d' );
+		$q = new WP_Query( array(
+			'post_type'      => 'mec-events',
+			'post_status'    => 'publish',
+			'posts_per_page' => 40,
+			'meta_key'       => 'mec_start_date',
+			'orderby'        => 'meta_value',
+			'order'          => 'ASC',
+			'no_found_rows'  => true,
+			'meta_query'     => array( array(
+				'key'     => 'mec_start_date',
+				'value'   => array( $today, $end ),
+				'compare' => 'BETWEEN',
+				'type'    => 'DATE',
+			) ),
+		) );
+		$out = array();
+		foreach ( $q->posts as $p ) {
+			$sd = get_post_meta( $p->ID, 'mec_start_date', true );
+			if ( ! $sd ) { continue; }
+			$tsec  = (int) $wpdb->get_var( $wpdb->prepare( "SELECT time_start FROM {$wpdb->prefix}mec_events WHERE post_id=%d LIMIT 1", $p->ID ) );
+			$start = new DateTime( $sd, $tz );
+			$start->modify( "+{$tsec} seconds" );
+			$activate = ( clone $start )->modify( '-72 hours' );
+			$tid   = (int) get_post_thumbnail_id( $p->ID );
+			$out[] = array(
+				'id'       => $p->ID,
+				'title'    => get_the_title( $p->ID ),
+				'image_id' => $tid,
+				'thumb'    => $tid ? wp_get_attachment_image_url( $tid, 'medium' ) : '',
+				'url'      => get_permalink( $p->ID ),
+				'activate' => $activate->format( 'Y-m-d\TH:i' ),
+				'when'     => wp_date( 'D M j · g:i a', $start->getTimestamp() ),
+			);
+		}
+		wp_reset_postdata();
+		return $out;
+	}
+
 	/* ---------- admin screen ---------- */
 	add_action( 'admin_menu', function () {
 		if ( function_exists( 'gasf_utilities_add_tab' ) ) {
@@ -211,6 +255,32 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		?>
 			<h2>Home Page Hero</h2>
 			<p>Schedule the large image at the top of the home page. Choose an image, optionally make it clickable, add a caption and a button, and set when it goes live. At its scheduled time it automatically replaces whatever is showing.</p>
+
+			<?php $gasf_hero_up = gasf_hero_upcoming_events( 7 ); if ( $gasf_hero_up ) : ?>
+			<h3 class="title">Quick-create from an upcoming event</h3>
+			<p>Next 7 days from the calendar. Click one to pre-fill the form below with its image &amp; link and a go-live time <strong>72&nbsp;hours before</strong> the event &mdash; then edit and schedule.</p>
+			<div class="gasf-hero-up">
+				<?php foreach ( $gasf_hero_up as $ev ) : ?>
+					<button type="button" class="gasf-hero-up__item"
+						data-image-id="<?php echo (int) $ev['image_id']; ?>"
+						data-thumb="<?php echo esc_attr( $ev['thumb'] ); ?>"
+						data-url="<?php echo esc_attr( $ev['url'] ); ?>"
+						data-activate="<?php echo esc_attr( $ev['activate'] ); ?>">
+						<?php if ( $ev['thumb'] ) : ?><img src="<?php echo esc_url( $ev['thumb'] ); ?>" alt=""><?php endif; ?>
+						<span class="gasf-hero-up__t"><?php echo esc_html( $ev['title'] ); ?></span>
+						<span class="gasf-hero-up__d"><?php echo esc_html( $ev['when'] ); ?></span>
+					</button>
+				<?php endforeach; ?>
+			</div>
+			<style>
+				.gasf-hero-up{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0 24px}
+				.gasf-hero-up__item{cursor:pointer;width:150px;text-align:left;background:#fff;border:1px solid #ccd0d4;border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:6px}
+				.gasf-hero-up__item:hover{border-color:#2271b1;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+				.gasf-hero-up__item img{width:100%;height:90px;object-fit:cover;border-radius:4px;display:block}
+				.gasf-hero-up__t{font-weight:600;font-size:12px;line-height:1.25}
+				.gasf-hero-up__d{font-size:11px;color:#666}
+			</style>
+			<?php endif; ?>
 
 			<h3 class="title">Add / schedule a hero</h3>
 			<form method="post">
@@ -308,6 +378,17 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 					$('#gasf_hero_preview').html('<img src="'+url+'" style="max-width:100%;height:auto;border:1px solid #ddd;border-radius:4px">');
 				});
 				frame.open();
+			});
+
+			// Quick-create: clicking an upcoming-event card pre-fills the form below.
+			$('.gasf-hero-up__item').on('click', function(){
+				var b = $(this);
+				$('#gasf_hero_image_id').val( b.data('image-id') || '' );
+				$('#gasf_hero_image_url').val( b.data('url') || '' );
+				$('#gasf_hero_activate_at').val( b.data('activate') || '' );
+				var t = b.data('thumb');
+				if ( t ) { $('#gasf_hero_preview').html('<img src="'+t+'" style="max-width:100%;height:auto;border:1px solid #ddd;border-radius:4px">'); }
+				$('html,body').animate({ scrollTop: $('#gasf_hero_activate_at').closest('table').offset().top - 80 }, 300);
 			});
 		});
 		</script>

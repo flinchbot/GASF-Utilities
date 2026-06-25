@@ -153,10 +153,12 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 
 	/* ---------- admin screen ---------- */
 	add_action( 'admin_menu', function () {
-		add_submenu_page( 'gasf-utilities', 'Home Page Hero', 'Home Page Hero', 'manage_options', 'gasf-hero', 'gasf_hero_admin_page' );
+		if ( function_exists( 'gasf_utilities_add_tab' ) ) {
+			gasf_utilities_add_tab( 'heroes', 'Heroes', 'gasf_hero_admin_page', 20 );
+		}
 	} );
 	add_action( 'admin_enqueue_scripts', function ( $hook ) {
-		if ( $hook === 'toplevel_page_gasf-hero' ) { wp_enqueue_media(); }
+		if ( $hook === 'toplevel_page_gasf-utilities' ) { wp_enqueue_media(); }
 	} );
 
 	function gasf_hero_admin_page() {
@@ -207,11 +209,10 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		$active_id = $active ? $active['id'] : '';
 		$tz        = wp_timezone_string();
 		?>
-		<div class="wrap">
-			<h1>Home Page Hero</h1>
+			<h2>Home Page Hero</h2>
 			<p>Schedule the large image at the top of the home page. Choose an image, optionally make it clickable, add a caption and a button, and set when it goes live. At its scheduled time it automatically replaces whatever is showing.</p>
 
-			<h2 class="title">Add / schedule a hero</h2>
+			<h3 class="title">Add / schedule a hero</h3>
 			<form method="post">
 				<?php wp_nonce_field( 'gasf_hero_action' ); ?>
 				<table class="form-table" role="presentation">
@@ -257,7 +258,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 				<p><button type="submit" name="gasf_hero_add" value="1" class="button button-primary">Schedule hero</button></p>
 			</form>
 
-			<h2 class="title">Scheduled heroes</h2>
+			<h3 class="title">Scheduled heroes</h3>
 			<table class="widefat striped">
 				<thead><tr><th>Image</th><th>Goes live</th><th>Status</th><th>Links / caption</th><th></th></tr></thead>
 				<tbody>
@@ -295,7 +296,6 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 				<?php endforeach; endif; ?>
 				</tbody>
 			</table>
-		</div>
 		<script>
 		jQuery(function($){
 			$('#gasf_hero_pick').on('click', function(e){

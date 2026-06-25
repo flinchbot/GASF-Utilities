@@ -28,7 +28,9 @@ add_action( 'admin_menu', function () {
 /* register the built-in tabs (modules register theirs on admin_menu too) */
 add_action( 'admin_menu', function () {
 	gasf_utilities_add_tab( 'overview', 'Overview', 'gasf_utilities_overview_tab', 1 );
-	gasf_utilities_add_tab( 'events', 'Event Calendars', 'gasf_utilities_events_tab', 10 );
+	// NOTE: the FB->MEC sync status (gasf_utilities_events_tab) is no longer a tab here —
+	// it is rendered on the Event Calendars > Settings page (GASF Event Calendars plugin),
+	// merged with the Eventbrite settings. The function is kept for that plugin to call.
 }, 10 );
 
 /* ---------- page renderer (tabs) ---------- */
@@ -64,7 +66,7 @@ function gasf_utilities_render() {
 function gasf_utilities_overview_tab() {
 	echo '<p>All custom germantampabay.com tweaks live in this one must-use plugin. Most run automatically (shortcodes &amp; filters); the tabs above hold anything with controls or status. This is the place to look for any custom behavior on the site.</p>';
 	echo '<h3>What\'s in here</h3><ul style="list-style:disc;margin-left:22px">';
-	echo '<li><strong>Event Calendars</strong> — Facebook sync fixes for Modern Events Calendar, branded single-event template, cover de-duplication, recurrence, deleted-event handling. <em>(See the Event Calendars tab for status.)</em></li>';
+	echo '<li><strong>Event Calendars</strong> — Facebook sync fixes for Modern Events Calendar, branded single-event template, cover de-duplication, recurrence, deleted-event handling. <em>(Sync status now appears on Event Calendars &rarr; Settings.)</em></li>';
 	echo '<li><strong>Heroes</strong> — schedule the home-page hero image. <em>(See the Heroes tab.)</em></li>';
 	echo '<li><strong>Shortcodes</strong> — <code>[gas_hero]</code>, <code>[gas_parking]</code>, <code>[german_dinner_events]</code>, <code>[world_cup_schedule]</code>, <code>[bundesliga_table]</code>, <code>[bundesliga_scorers]</code>, <code>[bundesliga_top_scorers]</code>.</li>';
 	echo '<li><strong>Site hardening / misc</strong> — REST &amp; author-enumeration block, calendar print button, content 301 redirects.</li>';

@@ -153,7 +153,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 
 	/* ---------- admin screen ---------- */
 	add_action( 'admin_menu', function () {
-		add_menu_page( 'Home Page Hero', 'Home Page Hero', 'manage_options', 'gasf-hero', 'gasf_hero_admin_page', 'dashicons-format-image', 26 );
+		add_submenu_page( 'gasf-utilities', 'Home Page Hero', 'Home Page Hero', 'manage_options', 'gasf-hero', 'gasf_hero_admin_page' );
 	} );
 	add_action( 'admin_enqueue_scripts', function ( $hook ) {
 		if ( $hook === 'toplevel_page_gasf-hero' ) { wp_enqueue_media(); }

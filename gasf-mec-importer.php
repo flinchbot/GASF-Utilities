@@ -1,12 +1,12 @@
 <?php
 /**
- * Plugin Name: GASF MEC Importer Fixes
+ * Plugin Name: GASF Utilities
  * Description: Consolidates the GASF MEC Advanced Importer fixes into one update-safe must-use plugin: cron registration, Facebook page-import defaults, manual-sync window filter, Facebook recurrence expansion, a deterministic duplicate sweep, and a request-log bloat cap. Replaces Code Snippets #17-#21.
  * Version:     1.0.0
  * Author:      GASF
  * License:     GPL-2.0-or-later
  *
- * Repo: https://github.com/flinchbot/GASF-MUPlugin_MECalendar
+ * Repo: https://github.com/flinchbot/GASF-Utilities
  *
  * ---------------------------------------------------------------------------
  * SECURITY: This file is tracked in a PUBLIC repo. NEVER hardcode secrets.

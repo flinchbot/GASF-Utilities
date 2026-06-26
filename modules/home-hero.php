@@ -240,6 +240,13 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 			echo '<div class="notice notice-success is-dismissible"><p>Hero entry deleted.</p></div>';
 		}
 
+		/* set the quick-create look-ahead window (days) */
+		if ( isset( $_POST['gasf_hero_set_days'] ) && check_admin_referer( 'gasf_hero_action' ) ) {
+			$d = max( 1, min( 365, (int) ( $_POST['gasf_hero_days'] ?? 14 ) ) );
+			update_option( 'gasf_hero_lookahead_days', $d, false );
+			echo '<div class="notice notice-success is-dismissible"><p>Quick-create list now shows the next ' . esc_html( $d ) . ' days.</p></div>';
+		}
+
 		/* add */
 		if ( isset( $_POST['gasf_hero_add'] ) && check_admin_referer( 'gasf_hero_action' ) ) {
 			$image_id = (int) ( $_POST['gasf_hero_image_id'] ?? 0 );
@@ -281,9 +288,21 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 			<h2>Home Page Hero</h2>
 			<p>Schedule the large image at the top of the home page. Choose an image, optionally make it clickable, add a caption and a button, and set when it goes live. At its scheduled time it automatically replaces whatever is showing.</p>
 
-			<?php $gasf_hero_up = gasf_hero_upcoming_events( 14 ); if ( $gasf_hero_up ) : ?>
+			<?php
+			$gasf_hero_days = (int) get_option( 'gasf_hero_lookahead_days', 14 );
+			if ( $gasf_hero_days < 1 ) { $gasf_hero_days = 14; }
+			$gasf_hero_up = gasf_hero_upcoming_events( $gasf_hero_days );
+			?>
 			<h3 class="title">Quick-create from an upcoming event</h3>
-			<p>Next 14 days from the calendar. Click one to pre-fill the form below with its image &amp; link and a go-live time <strong>72&nbsp;hours before</strong> the event &mdash; then edit and schedule.</p>
+			<form method="post" style="margin:0 0 10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+				<?php wp_nonce_field( 'gasf_hero_action' ); ?>
+				<label for="gasf_hero_days">Show events for the next</label>
+				<input type="number" id="gasf_hero_days" name="gasf_hero_days" value="<?php echo (int) $gasf_hero_days; ?>" min="1" max="365" class="small-text" style="width:72px">
+				<label>days</label>
+				<button type="submit" name="gasf_hero_set_days" value="1" class="button">Update</button>
+			</form>
+			<?php if ( $gasf_hero_up ) : ?>
+			<p>Click one to pre-fill the form below with its image &amp; link and a go-live time <strong>72&nbsp;hours before</strong> the event &mdash; then edit and schedule.</p>
 			<div class="gasf-hero-up">
 				<?php foreach ( $gasf_hero_up as $ev ) : ?>
 					<button type="button" class="gasf-hero-up__item"
@@ -306,6 +325,8 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 				.gasf-hero-up__t{font-weight:600;font-size:12px;line-height:1.25}
 				.gasf-hero-up__d{font-size:11px;color:#666}
 			</style>
+			<?php else : ?>
+			<p>No events in the next <?php echo (int) $gasf_hero_days; ?> days &mdash; increase the number above to look further out.</p>
 			<?php endif; ?>
 
 			<h3 class="title">Add / schedule a hero</h3>

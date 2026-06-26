@@ -1,168 +1,200 @@
 <?php
-// Module 25 — URL Shortify Branded Display (cosmetic admin-only rewrite to gtbay.club).
-// Gate: gasf_site_enable_us_branded (default ON).
-// Task: 260626-7p3.
-// Purpose: URL Shortify FREE/lite builds short links as home_url()+slug (no filter hook for
-//          custom domains in lite). This module intercepts ONLY the URL Shortify Links admin
-//          screen and rewrites displayed links + copy-button values from
-//          https://germantampabay.com/<slug> to https://gtbay.club/<slug>.
-//          gtbay.club is already a Cloudflare 301 redirect to germantampabay.com, so every
-//          rewritten link resolves identically. NO PHP/DB/option/redirect changes are made.
+/**
+ * Module 25 — URL Shortify Branded Display (domain-picker approach).
+ * Gate: gasf_site_enable_us_branded (default ON).
+ * Task: 260626-7p3 (REVISED 2026-06-26).
+ * Purpose: (A) Register https://gtbay.club as a selectable domain in URL Shortify's
+ *          domain dropdown via the kc_us_custom_domains filter.
+ *          (B) Admin-only display/copy rewrite scoped ONLY to links explicitly marked
+ *          rules.domain='gtbay' — so existing links (domain='home' or unset) are NEVER
+ *          changed. Queries the DB on admin_enqueue_scripts and localizes the id list to JS.
+ *          (C) Only enqueued on page=us_links.
+ * Safe: no plugin PHP edits, no DB-schema changes, no home/siteurl changes, no redirects.
+ */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-// Only run if gasf_site_enabled() is available (loaded by 00-site-compat.php first).
-// Fall back to a default-ON value so this file can never fatal in any load order.
+// Gate: fail-safe fall back to ON when gasf_site_enabled() not yet loaded.
 $_gasf_us_enabled = function_exists( 'gasf_site_enabled' )
     ? gasf_site_enabled( 'gasf_site_enable_us_branded' )
-    : true; // default ON when gate helper not yet loaded
+    : true;
 
-if ( $_gasf_us_enabled ) {
+if ( ! $_gasf_us_enabled ) {
+    return;
+}
 
-add_action( 'admin_enqueue_scripts', function ( $hook_suffix ) {
+// (A) Register gtbay.club as a selectable URL Shortify domain.
+// Key MUST be 'gtbay' — that is what gets stored in rules.domain and what the rewrite keys on.
+add_filter( 'kc_us_custom_domains', function ( $domains ) {
+    if ( ! is_array( $domains ) ) {
+        $domains = array();
+    }
+    $domains['gtbay'] = 'https://gtbay.club';
+    return $domains;
+} );
 
-    // Guard: only act on URL Shortify admin screens that display short links.
-    // Primary target: us_links (Links list). Also cover url_shortify (dashboard)
-    // and us_groups (Groups) in case they ever show short-link copy buttons.
-    if ( ! isset( $_GET['page'] ) ) {
+// (B) Admin display/copy rewrite — scoped to page=us_links only.
+add_action( 'admin_enqueue_scripts', function () {
+
+    // Only act on the URL Shortify Links list/edit screen.
+    if ( ! isset( $_GET['page'] ) || 'us_links' !== $_GET['page'] ) {
         return;
     }
-    $page = sanitize_text_field( wp_unslash( $_GET['page'] ) );
-    $allowed_pages = array( 'us_links', 'url_shortify', 'us_groups' );
-    if ( ! in_array( $page, $allowed_pages, true ) ) {
-        return;
+
+    // Query DB once: collect ids whose rules.domain === 'gtbay'.
+    // PHP unserialize is safer than a LIKE on serialized bytes.
+    // Club-scale table — full scan is fine.
+    try {
+        global $wpdb;
+        $table = $wpdb->prefix . 'kc_us_links';
+        $rows  = $wpdb->get_results( "SELECT id, rules FROM `{$table}`", ARRAY_A );
+        $gtbay_ids = array();
+        if ( is_array( $rows ) ) {
+            foreach ( $rows as $row ) {
+                $rules = @unserialize( $row['rules'] );
+                if ( is_array( $rules ) && isset( $rules['domain'] ) && $rules['domain'] === 'gtbay' ) {
+                    $gtbay_ids[] = (int) $row['id'];
+                }
+            }
+        }
+    } catch ( \Exception $e ) {
+        $gtbay_ids = array();
     }
 
-    // Register a no-src script handle so wp_add_inline_script has somewhere to attach.
-    // false src is the standard WP pattern for inline-only scripts.
-    wp_register_script( 'gasf-us-branded', false, array(), '1.0', true );
+    // Register a no-src handle (standard WP pattern for inline-only scripts).
+    wp_register_script( 'gasf-us-branded', false, array(), '1.1', true );
     wp_enqueue_script( 'gasf-us-branded' );
+
+    // Localize the id list to JS.
+    // Using wp_add_inline_script 'before' so the var is available when the IIFE runs.
+    $ids_json = wp_json_encode( $gtbay_ids );
+    wp_add_inline_script( 'gasf-us-branded', 'var GASF_US_GTBAY_IDS = ' . $ids_json . ';', 'before' );
 
     // phpcs:disable
     $js = <<<'INLINEJS'
 (function () {
     'use strict';
 
-    var OLD_HOST = 'germantampabay.com';
-    var NEW_HOST = 'gtbay.club';
+    var OLD_PATTERN = /https?:\/\/(?:www\.)?germantampabay\.com\//i;
+    var NEW_PREFIX  = 'https://gtbay.club/';
+    var IDS         = (typeof GASF_US_GTBAY_IDS !== 'undefined') ? GASF_US_GTBAY_IDS : [];
+
+    if (!IDS || IDS.length === 0) {
+        return; // No gtbay links in DB yet — nothing to do.
+    }
 
     /**
-     * Rewrite a single URL string: host-swap only, path preserved.
-     * Tolerates http://, https://, www. prefix.
-     * Returns the original string unchanged if it does not contain OLD_HOST.
+     * Rewrite a URL string: host-swap only, path preserved.
+     * Returns null if the URL already is gtbay.club or does not contain germantampabay.com.
      */
     function rewriteUrl(url) {
-        if (!url || url.indexOf(OLD_HOST) === -1) {
-            return url;
+        if (!url) { return null; }
+        if (url.indexOf('gtbay.club') !== -1) { return null; } // already correct, skip
+        if (OLD_PATTERN.test(url)) {
+            return url.replace(OLD_PATTERN, NEW_PREFIX);
         }
-        return url.replace(
-            /https?:\/\/(?:www\.)?germantampabay\.com\//i,
-            'https://' + NEW_HOST + '/'
-        );
+        return null;
     }
 
     /**
-     * Rewrite visible text nodes inside an element.
-     * Skips SVG subtrees (copy-feedback icons) to avoid mangling icon labels.
+     * Rewrite visible text nodes inside an element (skips SVG subtrees).
      */
     function rewriteTextNodes(el) {
-        var walker = document.createTreeWalker(
-            el,
-            NodeFilter.SHOW_TEXT,
-            {
-                acceptNode: function (node) {
-                    var parent = node.parentNode;
-                    while (parent && parent !== el) {
-                        if (parent.nodeName && parent.nodeName.toLowerCase() === 'svg') {
-                            return NodeFilter.FILTER_REJECT;
+        try {
+            var walker = document.createTreeWalker(
+                el,
+                NodeFilter.SHOW_TEXT,
+                {
+                    acceptNode: function (node) {
+                        var p = node.parentNode;
+                        while (p && p !== el) {
+                            if (p.nodeName && p.nodeName.toLowerCase() === 'svg') {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+                            p = p.parentNode;
                         }
-                        parent = parent.parentNode;
+                        return NodeFilter.FILTER_ACCEPT;
                     }
-                    return NodeFilter.FILTER_ACCEPT;
+                }
+            );
+            var node;
+            while ((node = walker.nextNode())) {
+                if (node.nodeValue && OLD_PATTERN.test(node.nodeValue)) {
+                    node.nodeValue = node.nodeValue.replace(OLD_PATTERN, NEW_PREFIX);
                 }
             }
-        );
-        var node;
-        while ((node = walker.nextNode())) {
-            if (node.nodeValue && node.nodeValue.indexOf(OLD_HOST) !== -1) {
-                node.nodeValue = node.nodeValue.replace(
-                    /https?:\/\/(?:www\.)?germantampabay\.com\//gi,
-                    'https://' + NEW_HOST + '/'
-                );
-            }
-        }
+        } catch (e) { /* ignore */ }
     }
 
     /**
-     * Apply branded rewrite to a single .kc-us-copy-to-clipboard element.
+     * Rewrite a single copy-to-clipboard element for a given link id.
+     * Targets:
+     *   #copy-link-<id>  (column_title copy anchor)
+     *   #link-<id>       (column_link / create_copy_short_link_html span)
+     * Does NOT touch .kc-us-link inputs (they hold only /slug) or Target column.
      */
-    function applyToElement(el) {
+    function rewriteElement(el) {
+        if (!el) { return; }
         try {
-            // Rewrite the clipboard value (data-clipboard-text attribute)
-            var clipVal = el.getAttribute('data-clipboard-text');
-            if (clipVal && clipVal.indexOf(NEW_HOST) === -1) {
-                el.setAttribute('data-clipboard-text', rewriteUrl(clipVal));
+            // Rewrite data-clipboard-text (the copy value).
+            var clip = el.getAttribute('data-clipboard-text');
+            if (clip) {
+                var newClip = rewriteUrl(clip);
+                if (newClip) { el.setAttribute('data-clipboard-text', newClip); }
             }
 
-            // If the element itself is an anchor, rewrite its href
+            // If the element itself is an anchor, rewrite its href.
             if (el.tagName && el.tagName.toLowerCase() === 'a') {
                 var href = el.getAttribute('href');
-                if (href && href !== '#' && href.indexOf(OLD_HOST) !== -1) {
-                    el.setAttribute('href', rewriteUrl(href));
+                if (href && href !== '#') {
+                    var newHref = rewriteUrl(href);
+                    if (newHref) { el.setAttribute('href', newHref); }
                 }
             }
 
-            // Also rewrite any inner anchor whose href is the short link
+            // Rewrite any inner anchor hrefs.
             var innerLinks = el.querySelectorAll('a[href]');
             for (var i = 0; i < innerLinks.length; i++) {
-                var innerHref = innerLinks[i].getAttribute('href');
-                if (innerHref && innerHref.indexOf(OLD_HOST) !== -1) {
-                    innerLinks[i].setAttribute('href', rewriteUrl(innerHref));
+                var iHref = innerLinks[i].getAttribute('href');
+                if (iHref && iHref !== '#') {
+                    var niHref = rewriteUrl(iHref);
+                    if (niHref) { innerLinks[i].setAttribute('href', niHref); }
                 }
             }
 
-            // Rewrite visible text nodes (skips SVG children)
+            // Rewrite visible text nodes (skips SVG, skips .kc-us-link inputs).
             rewriteTextNodes(el);
-        } catch (e) {
-            // Silently ignore -- never break the admin
-        }
+        } catch (e) { /* never break admin */ }
     }
 
     /**
-     * Apply rewrite to all .kc-us-copy-to-clipboard elements on the page.
-     * If none are found, does nothing (safe no-op).
+     * Apply rewrites for all gtbay ids.
      */
     function applyAll() {
         try {
-            var els = document.querySelectorAll('.kc-us-copy-to-clipboard');
-            if (!els || els.length === 0) {
-                return;
+            for (var i = 0; i < IDS.length; i++) {
+                var id = IDS[i];
+                rewriteElement(document.getElementById('copy-link-' + id));
+                rewriteElement(document.getElementById('link-' + id));
             }
-            for (var i = 0; i < els.length; i++) {
-                applyToElement(els[i]);
-            }
-        } catch (e) {
-            // Silently ignore
-        }
+        } catch (e) { /* ignore */ }
     }
 
-    // Run on DOMContentLoaded (or immediately if DOM is already ready)
+    // Run on DOMContentLoaded (or immediately if DOM already ready).
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', applyAll);
     } else {
         applyAll();
     }
 
-    // MutationObserver: re-apply if the link list is replaced by AJAX.
-    // Guarded with _observing flag so our own DOM writes do not trigger a loop.
+    // MutationObserver: re-apply after AJAX row refresh.
+    // _observing flag prevents loops on our own DOM writes.
     try {
         var listContainer = document.getElementById('the-list') ||
                             document.querySelector('.wp-list-table tbody');
         if (listContainer && typeof MutationObserver !== 'undefined') {
             var _observing = false;
             var observer = new MutationObserver(function (mutations) {
-                if (_observing) {
-                    return;
-                }
+                if (_observing) { return; }
                 var needsRun = false;
                 for (var m = 0; m < mutations.length; m++) {
                     if (mutations[m].addedNodes && mutations[m].addedNodes.length > 0) {
@@ -172,20 +204,12 @@ add_action( 'admin_enqueue_scripts', function ( $hook_suffix ) {
                 }
                 if (needsRun) {
                     _observing = true;
-                    try {
-                        applyAll();
-                    } catch (e) {
-                        // ignore
-                    } finally {
-                        _observing = false;
-                    }
+                    try { applyAll(); } catch (e) { /* ignore */ } finally { _observing = false; }
                 }
             });
             observer.observe(listContainer, { childList: true, subtree: true });
         }
-    } catch (e) {
-        // MutationObserver setup failure is non-fatal
-    }
+    } catch (e) { /* MutationObserver setup failure is non-fatal */ }
 
 })();
 INLINEJS;
@@ -194,5 +218,3 @@ INLINEJS;
     wp_add_inline_script( 'gasf-us-branded', $js );
 
 } );
-
-} // end if $_gasf_us_enabled

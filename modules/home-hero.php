@@ -247,21 +247,21 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 			echo '<div class="notice notice-success is-dismissible"><p>Quick-create list now shows the next ' . esc_html( $d ) . ' days.</p></div>';
 		}
 
-		/* add */
+		/* add / edit */
 		if ( isset( $_POST['gasf_hero_add'] ) && check_admin_referer( 'gasf_hero_action' ) ) {
-			$image_id = (int) ( $_POST['gasf_hero_image_id'] ?? 0 );
-			$when_raw = sanitize_text_field( wp_unslash( $_POST['gasf_hero_activate_at'] ?? '' ) );
-			$dt       = $when_raw ? DateTime::createFromFormat( 'Y-m-d\TH:i', $when_raw, wp_timezone() ) : false;
-			$ts       = $dt ? $dt->getTimestamp() : 0;
+			$image_id    = (int) ( $_POST['gasf_hero_image_id'] ?? 0 );
+			$when_raw    = sanitize_text_field( wp_unslash( $_POST['gasf_hero_activate_at'] ?? '' ) );
+			$dt          = $when_raw ? DateTime::createFromFormat( 'Y-m-d\TH:i', $when_raw, wp_timezone() ) : false;
+			$ts          = $dt ? $dt->getTimestamp() : 0;
+			$edit_id     = isset( $_POST['gasf_hero_edit_id'] ) ? sanitize_text_field( wp_unslash( $_POST['gasf_hero_edit_id'] ) ) : '';
 
 			if ( ! $image_id ) {
 				echo '<div class="notice notice-error"><p>Please choose an image.</p></div>';
 			} elseif ( ! $ts ) {
 				echo '<div class="notice notice-error"><p>Please set a valid activation date/time.</p></div>';
 			} else {
-				$entries   = gasf_hero_get_entries();
-				$entries[] = array(
-					'id'           => uniqid( 'hero_', true ),
+				$entries        = gasf_hero_get_entries();
+				$sanitized_data = array(
 					'image_id'     => $image_id,
 					'image_url'    => esc_url_raw( wp_unslash( $_POST['gasf_hero_image_url'] ?? '' ) ),
 					'max_width'    => max( 0, (int) ( $_POST['gasf_hero_max_width'] ?? 0 ) ),
@@ -270,12 +270,40 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 					'button_url'   => esc_url_raw( wp_unslash( $_POST['gasf_hero_button_url'] ?? '' ) ),
 					'activate_at'  => $ts,
 					'event_id'     => (int) ( $_POST['gasf_hero_event_id'] ?? 0 ),
-					'created'      => time(),
 				);
-				gasf_hero_save_entries( $entries );
-				gasf_hero_schedule_purge( $ts );
-				$verb = $ts > time() ? 'scheduled for' : 'live as of';
-				echo '<div class="notice notice-success is-dismissible"><p>Hero ' . esc_html( $verb ) . ' ' . esc_html( wp_date( 'M j, Y g:i a', $ts ) ) . '.</p></div>';
+
+				if ( $edit_id !== '' ) {
+					// Edit in-place: find the matching entry and overwrite its editable fields.
+					$found = false;
+					foreach ( $entries as &$entry ) {
+						if ( $entry['id'] === $edit_id ) {
+							$entry = array_merge( $entry, $sanitized_data ); // keeps 'id' and 'created'
+							$found = true;
+							break;
+						}
+					}
+					unset( $entry );
+
+					if ( $found ) {
+						gasf_hero_save_entries( $entries );
+						gasf_hero_schedule_purge( $ts );
+						echo '<div class="notice notice-success is-dismissible"><p>Hero updated.</p></div>';
+					} else {
+						// edit_id supplied but no matching entry found — fall through to create
+						$entries[]  = array_merge( array( 'id' => uniqid( 'hero_', true ), 'created' => time() ), $sanitized_data );
+						gasf_hero_save_entries( $entries );
+						gasf_hero_schedule_purge( $ts );
+						$verb = $ts > time() ? 'scheduled for' : 'live as of';
+						echo '<div class="notice notice-success is-dismissible"><p>Hero ' . esc_html( $verb ) . ' ' . esc_html( wp_date( 'M j, Y g:i a', $ts ) ) . '.</p></div>';
+					}
+				} else {
+					// Create: append new entry with a fresh id.
+					$entries[] = array_merge( array( 'id' => uniqid( 'hero_', true ), 'created' => time() ), $sanitized_data );
+					gasf_hero_save_entries( $entries );
+					gasf_hero_schedule_purge( $ts );
+					$verb = $ts > time() ? 'scheduled for' : 'live as of';
+					echo '<div class="notice notice-success is-dismissible"><p>Hero ' . esc_html( $verb ) . ' ' . esc_html( wp_date( 'M j, Y g:i a', $ts ) ) . '.</p></div>';
+				}
 			}
 		}
 
@@ -332,6 +360,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 			<h3 class="title">Add / schedule a hero</h3>
 			<form method="post">
 				<?php wp_nonce_field( 'gasf_hero_action' ); ?>
+				<input type="hidden" id="gasf_hero_edit_id" name="gasf_hero_edit_id" value="">
 				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row">Image</th>
@@ -373,7 +402,10 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 						</td>
 					</tr>
 				</table>
-				<p><button type="submit" name="gasf_hero_add" value="1" class="button button-primary">Schedule hero</button></p>
+				<p>
+					<button type="submit" id="gasf_hero_submit" name="gasf_hero_add" value="1" class="button button-primary">Schedule hero</button>
+					<button type="button" id="gasf_hero_cancel_edit" class="button" style="display:none;margin-left:8px">Cancel edit</button>
+				</p>
 			</form>
 
 			<h3 class="title">Scheduled heroes</h3>
@@ -404,7 +436,19 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 							}
 							?>
 						</td>
-						<td>
+						<td style="white-space:nowrap">
+							<button type="button" class="button gasf-hero-edit"
+								data-id="<?php echo esc_attr( $e['id'] ); ?>"
+								data-image-id="<?php echo esc_attr( $e['image_id'] ); ?>"
+								data-event-id="<?php echo esc_attr( isset( $e['event_id'] ) ? $e['event_id'] : '' ); ?>"
+								data-image-url="<?php echo esc_attr( isset( $e['image_url'] ) ? $e['image_url'] : '' ); ?>"
+								data-max-width="<?php echo esc_attr( isset( $e['max_width'] ) ? $e['max_width'] : '' ); ?>"
+								data-caption="<?php echo esc_attr( isset( $e['caption'] ) ? $e['caption'] : '' ); ?>"
+								data-button-label="<?php echo esc_attr( isset( $e['button_label'] ) ? $e['button_label'] : '' ); ?>"
+								data-button-url="<?php echo esc_attr( isset( $e['button_url'] ) ? $e['button_url'] : '' ); ?>"
+								data-thumb="<?php echo esc_attr( wp_get_attachment_image_url( (int) $e['image_id'], 'large' ) ); ?>"
+								data-activate="<?php echo esc_attr( wp_date( 'Y-m-d\TH:i', $ts ) ); ?>"
+								style="margin-bottom:4px">Edit</button>
 							<form method="post" onsubmit="return confirm('Delete this hero entry?');" style="margin:0">
 								<?php wp_nonce_field( 'gasf_hero_action' ); ?>
 								<input type="hidden" name="gasf_hero_delete" value="<?php echo esc_attr( $e['id'] ); ?>">
@@ -439,6 +483,45 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 				var t = b.data('thumb');
 				if ( t ) { $('#gasf_hero_preview').html('<img src="'+t+'" style="max-width:100%;height:auto;border:1px solid #ddd;border-radius:4px">'); }
 				$('html,body').animate({ scrollTop: $('#gasf_hero_activate_at').closest('table').offset().top - 80 }, 300);
+			});
+
+			// Edit hero: pre-fill the form from the row's data-* attributes.
+			$(document).on('click', '.gasf-hero-edit', function(){
+				var b = $(this);
+				$('#gasf_hero_edit_id').val( b.attr('data-id') );
+				$('#gasf_hero_image_id').val( b.attr('data-image-id') || '' );
+				$('#gasf_hero_event_id').val( b.attr('data-event-id') || '' );
+				$('#gasf_hero_image_url').val( b.attr('data-image-url') || '' );
+				$('#gasf_hero_max_width').val( b.attr('data-max-width') || '' );
+				$('#gasf_hero_caption').val( b.attr('data-caption') );  // .attr() not .data() — preserves HTML
+				$('#gasf_hero_button_label').val( b.attr('data-button-label') || '' );
+				$('#gasf_hero_button_url').val( b.attr('data-button-url') || '' );
+				$('#gasf_hero_activate_at').val( b.attr('data-activate') || '' );
+				var thumb = b.attr('data-thumb');
+				if ( thumb ) {
+					$('#gasf_hero_preview').html('<img src="'+thumb+'" style="max-width:100%;height:auto;border:1px solid #ddd;border-radius:4px">');
+				} else {
+					$('#gasf_hero_preview').html('');
+				}
+				$('#gasf_hero_submit').text('Save changes');
+				$('#gasf_hero_cancel_edit').show();
+				$('html,body').animate({ scrollTop: $('#gasf_hero_activate_at').closest('table').offset().top - 80 }, 300);
+			});
+
+			// Cancel edit: reset form to create mode.
+			$('#gasf_hero_cancel_edit').on('click', function(){
+				$('#gasf_hero_edit_id').val('');
+				$('#gasf_hero_image_id').val('');
+				$('#gasf_hero_event_id').val('');
+				$('#gasf_hero_image_url').val('');
+				$('#gasf_hero_max_width').val('');
+				$('#gasf_hero_caption').val('');
+				$('#gasf_hero_button_label').val('');
+				$('#gasf_hero_button_url').val('');
+				$('#gasf_hero_activate_at').val('');
+				$('#gasf_hero_preview').html('');
+				$('#gasf_hero_submit').text('Schedule hero');
+				$(this).hide();
 			});
 		});
 		</script>

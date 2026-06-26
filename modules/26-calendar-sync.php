@@ -798,6 +798,23 @@ function gasf_calsync_sync_source( $src, $cal_id ) {
 		return $result;
 	}
 
+	/* Step 2b: Sync window - keep last 1 year + all future (and all recurring). */
+	$cutoff       = time() - YEAR_IN_SECONDS;
+	$total_parsed = count( $ics_events );
+	$ics_events   = array_filter( $ics_events, function ( $ev ) use ( $cutoff ) {
+		if ( ! empty( $ev['rrule'] ) ) { return true; } // recurring may extend into the future
+		$ref = isset( $ev['dtend'] ) ? $ev['dtend'] : ( $ev['dtstart'] ?? '' );
+		if ( $ref === '' ) { return true; }
+		$ts = strtotime( $ref );
+		if ( $ts === false ) { return true; }
+		return $ts >= $cutoff;
+	} );
+	if ( empty( $ics_events ) && $total_parsed > 0 ) {
+		$result['skipped'] = true;
+		$result['errors'][] = 'All ' . $total_parsed . ' events fall outside the 1-year window - skipping.';
+		return $result;
+	}
+
 	/* Step 3: List existing managed events for this source */
 	$managed = gasf_calsync_list_managed( $cal_id, $label );
 	if ( is_wp_error( $managed ) ) {

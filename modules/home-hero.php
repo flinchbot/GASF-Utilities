@@ -372,11 +372,6 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 						</td>
 					</tr>
 					<tr>
-						<th scope="row"><label for="gasf_hero_max_width">Display width (optional)</label></th>
-						<td><input type="number" id="gasf_hero_max_width" name="gasf_hero_max_width" class="small-text" min="0" step="10" placeholder="450"> px
-						<p class="description">Max image width, centered. Leave blank or 0 for full width.</p></td>
-					</tr>
-					<tr>
 						<th scope="row"><label for="gasf_hero_image_url">Image link (optional)</label></th>
 						<td><input type="url" id="gasf_hero_image_url" name="gasf_hero_image_url" class="regular-text" placeholder="https://…">
 						<p class="description">Makes the whole image clickable. Can be different from the button link below.</p></td>
@@ -402,6 +397,10 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 						</td>
 					</tr>
 				</table>
+				<details id="gasf_hero_adv" style="margin:6px 0">
+					<summary style="cursor:pointer">Advanced: display width</summary>
+					<p style="margin:8px 0 0"><label for="gasf_hero_max_width">Display width</label> <input type="number" id="gasf_hero_max_width" name="gasf_hero_max_width" class="small-text" min="0" step="10" value="450"> px <span class="description">Max image width, centered. Set 0 for full width.</span></p>
+				</details>
 				<p>
 					<button type="submit" id="gasf_hero_submit" name="gasf_hero_add" value="1" class="button button-primary">Schedule hero</button>
 					<button type="button" id="gasf_hero_cancel_edit" class="button" style="display:none;margin-left:8px">Cancel edit</button>
@@ -493,6 +492,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 				$('#gasf_hero_event_id').val( b.attr('data-event-id') || '' );
 				$('#gasf_hero_image_url').val( b.attr('data-image-url') || '' );
 				$('#gasf_hero_max_width').val( b.attr('data-max-width') || '' );
+				if ( ( b.attr('data-max-width') || '' ) !== '450' ) { $('#gasf_hero_adv').attr('open', true); } else { $('#gasf_hero_adv').removeAttr('open'); }
 				$('#gasf_hero_caption').val( b.attr('data-caption') );  // .attr() not .data() — preserves HTML
 				$('#gasf_hero_button_label').val( b.attr('data-button-label') || '' );
 				$('#gasf_hero_button_url').val( b.attr('data-button-url') || '' );
@@ -514,7 +514,8 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 				$('#gasf_hero_image_id').val('');
 				$('#gasf_hero_event_id').val('');
 				$('#gasf_hero_image_url').val('');
-				$('#gasf_hero_max_width').val('');
+				$('#gasf_hero_max_width').val('450');
+				$('#gasf_hero_adv').removeAttr('open');
 				$('#gasf_hero_caption').val('');
 				$('#gasf_hero_button_label').val('');
 				$('#gasf_hero_button_url').val('');

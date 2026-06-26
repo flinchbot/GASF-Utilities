@@ -53,10 +53,17 @@ function gasf_mec_fb_refresh_event( $post_id, $dry_run = false ) {
 	$is_recurring = (bool) get_post_meta( $post_id, 'gasf_mec_recurring_parent', true );
 	$post_update = array();
 
-	// title + description
-	if ( isset( $ev->name ) && trim( $ev->name ) !== '' && $ev->name !== $p->post_title ) {
-		$changes['title'] = true; $post_update['post_title'] = $ev->name;
-		$audit[] = "title: '" . mb_substr( $p->post_title, 0, 60 ) . "' -> '" . mb_substr( $ev->name, 0, 60 ) . "'";
+	// FIX 1 — Title entity normalization: decode HTML entities on BOTH sides before comparing
+	// so &amp; stored in DB and & returned by FB API are treated as equal unless the title
+	// truly changed. Without this, wp_update_post fires every cycle (writes & to DB, WP
+	// re-encodes to &amp; on storage, mismatch persists forever → infinite write loop).
+	if ( isset( $ev->name ) && trim( $ev->name ) !== '' ) {
+		$ev_name_normalized    = html_entity_decode( trim( $ev->name ),    ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$stored_title_normalized = html_entity_decode( $p->post_title,       ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		if ( $ev_name_normalized !== $stored_title_normalized ) {
+			$changes['title'] = true; $post_update['post_title'] = $ev->name;
+			$audit[] = "title: '" . mb_substr( $p->post_title, 0, 60 ) . "' -> '" . mb_substr( $ev->name, 0, 60 ) . "'";
+		}
 	}
 	$desc = isset( $ev->description ) ? (string) $ev->description : '';
 	if ( $desc !== $p->post_content ) {
@@ -86,11 +93,39 @@ function gasf_mec_fb_refresh_event( $post_id, $dry_run = false ) {
 		} catch ( Exception $e ) { $dt_fields=null; }
 	}
 
-	// featured image (cover): baseline existing on first sight; only sync genuine changes
+	// FIX 2 — Self-healing image check: if the current thumbnail's file is missing from disk,
+	// force a re-sideload on every cycle regardless of whether the FB cover ID changed.
+	// This recovers from any external cause (host cleanup, orphan-delete collision, etc.)
+	// without requiring a manual intervention.
+	$needs_image_heal = false;
 	if ( isset( $ev->cover->source ) ) {
 		$cover_id = isset( $ev->cover->id ) ? (string) $ev->cover->id : md5( $ev->cover->source );
 		if ( get_post_meta( $post_id, 'gasf_mec_fb_cover_id', true ) !== $cover_id ) {
+			// Cover changed on FB — always sideload.
 			$changes['image'] = true; $audit[] = 'image: cover synced';
+		} else {
+			// Cover ID unchanged — but verify file is actually on disk (self-heal).
+			$thumb_id = (int) get_post_thumbnail_id( $post_id );
+			if ( $thumb_id ) {
+				$thumb_file = get_attached_file( $thumb_id );
+				if ( ! $thumb_file || ! file_exists( $thumb_file ) ) {
+					// File is missing — force re-sideload so the event auto-recovers.
+					$needs_image_heal = true;
+					$changes['image'] = true;
+					$audit[] = 'image: cover re-sideloaded (file was missing from disk)';
+					if ( function_exists( 'gasf_mec_log' ) ) {
+						gasf_mec_log( "FB-IMG-HEAL post=$post_id thumb=$thumb_id file missing — forcing re-sideload" );
+					}
+				}
+			} else {
+				// No thumbnail at all — force re-sideload.
+				$needs_image_heal = true;
+				$changes['image'] = true;
+				$audit[] = 'image: cover re-sideloaded (no thumbnail set)';
+				if ( function_exists( 'gasf_mec_log' ) ) {
+					gasf_mec_log( "FB-IMG-HEAL post=$post_id no thumbnail — forcing re-sideload" );
+				}
+			}
 		}
 	}
 
@@ -101,7 +136,26 @@ function gasf_mec_fb_refresh_event( $post_id, $dry_run = false ) {
 	if ( $post_update ) { $post_update['ID']=$post_id; wp_update_post( $post_update ); }
 	if ( $dt_fields && isset( $changes['datetime'] ) ) gasf_mec_write_single_datetime( $post_id, $dt_fields );
 	elseif ( $dt_fields && $is_recurring && isset( $changes['time'] ) ) gasf_mec_write_time_meta_only( $post_id, $dt_fields );
-	if ( isset( $changes['image'] ) ) gasf_mec_sideload_cover( $post_id, $ev->cover );
+	if ( isset( $changes['image'] ) ) {
+		if ( $needs_image_heal ) {
+			// On a heal, clear the stale thumbnail and cover-id first so sideload starts fresh.
+			$stale_thumb = (int) get_post_thumbnail_id( $post_id );
+			delete_post_thumbnail( $post_id );
+			delete_post_meta( $post_id, 'gasf_mec_fb_cover_id' );
+			// Purge the stale attachment record if its file is gone and it is not used elsewhere.
+			if ( $stale_thumb && ! gasf_mec_attachment_in_use( $stale_thumb, $post_id ) ) {
+				$stale_file = get_attached_file( $stale_thumb );
+				if ( ! $stale_file || ! file_exists( $stale_file ) ) {
+					// Safe to remove the orphan DB record whose file is already gone.
+					wp_delete_attachment( $stale_thumb, true );
+					if ( function_exists( 'gasf_mec_log' ) ) {
+						gasf_mec_log( 'FB-IMG-HEAL-PURGE deleted stale attachment=' . $stale_thumb . ' (file was missing, post=' . $post_id . ')' );
+					}
+				}
+			}
+		}
+		gasf_mec_sideload_cover( $post_id, $ev->cover );
+	}
 
 	if ( function_exists( 'gasf_mec_log' ) ) gasf_mec_log( "FB-REFRESH post=$post_id | " . implode( ' | ', $audit ) );
 	return array( 'post_id'=>$post_id, 'applied'=>$audit );
@@ -155,10 +209,30 @@ function gasf_mec_sideload_cover( $post_id, $cover ) {
 	set_post_thumbnail( $post_id, $att );
 	update_post_meta( $post_id, 'gasf_mec_fb_cover_id', $cover_id );
 	$count++;
-	// orphan cleanup: delete the image we just replaced if nothing else uses it
-	if ( $old_thumb && $old_thumb !== (int) $att && ! gasf_mec_attachment_in_use( $old_thumb, $post_id ) ) {
-		wp_delete_attachment( $old_thumb, true );
-		if ( function_exists( 'gasf_mec_log' ) ) gasf_mec_log( 'FB-IMG-ORPHAN deleted attachment=' . $old_thumb . ' (replaced on post=' . $post_id . ')' );
+
+	// FIX 3 — Hardened orphan cleanup: before deleting the old thumbnail, verify that
+	// its underlying file path DIFFERS from the new attachment's file path. If they share
+	// the same path (stale DB record pointing to a file now owned by the new attachment),
+	// skip the delete to avoid nuking the freshly-written files.
+	// Also refuse to delete a dedup master (_gasf_cover_sha1) that is still referenced by
+	// another post's _thumbnail_id — gasf_mec_attachment_in_use already covers that case,
+	// but the file-path guard adds a second safety layer against the ghost-attachment bug.
+	if ( $old_thumb && $old_thumb !== (int) $att ) {
+		$old_file = get_attached_file( $old_thumb );
+		$new_file = get_attached_file( (int) $att );
+		// Skip delete if old record points to the same physical file as the new attachment
+		// (ghost-attachment scenario: old file was already gone but DB path matches new file).
+		$same_file = ( $old_file && $new_file && wp_normalize_path( $old_file ) === wp_normalize_path( $new_file ) );
+		if ( ! $same_file && ! gasf_mec_attachment_in_use( $old_thumb, $post_id ) ) {
+			wp_delete_attachment( $old_thumb, true );
+			if ( function_exists( 'gasf_mec_log' ) ) gasf_mec_log( 'FB-IMG-ORPHAN deleted attachment=' . $old_thumb . ' (replaced on post=' . $post_id . ')' );
+		} elseif ( $same_file ) {
+			// Ghost attachment: old record points to the same file now owned by the new
+			// attachment. Leave the orphan DB row in place — it is harmless (no file,
+			// no thumbnail reference) and touching it risks deleting the new file.
+			// A future media library cleanup can remove it safely.
+			if ( function_exists( 'gasf_mec_log' ) ) gasf_mec_log( 'FB-IMG-GHOST skipped delete of attachment=' . $old_thumb . ' (same file path as new att=' . (int)$att . ', post=' . $post_id . ')' );
+		}
 	}
 	return $att;
 }

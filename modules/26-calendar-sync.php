@@ -49,7 +49,7 @@ function gasf_calsync_get_sources() {
  * @return array { calendar_id: string, interval: 'hourly'|'twicedaily'|'daily' }
  */
 function gasf_calsync_get_settings() {
-	$defaults = array( 'calendar_id' => '', 'interval' => 'hourly' );
+	$defaults = array( 'calendar_id' => '', 'interval' => 'hourly', 'window_days' => 365 );
 	$saved    = get_option( 'gasf_calsync_settings', array() );
 	return array_merge( $defaults, is_array( $saved ) ? $saved : array() );
 }
@@ -108,7 +108,8 @@ function gasf_calsync_admin_page() {
 			? $_POST['gasf_calsync_interval']
 			: 'hourly';
 		$old_settings  = gasf_calsync_get_settings();
-		$new_settings  = array( 'calendar_id' => $cal_id, 'interval' => $new_interval );
+		$win_days      = max( 0, (int) ( $_POST['gasf_calsync_window_days'] ?? 365 ) );
+		$new_settings  = array( 'calendar_id' => $cal_id, 'interval' => $new_interval, 'window_days' => $win_days );
 		update_option( 'gasf_calsync_settings', $new_settings, false );
 		/* reschedule cron if interval changed */
 		if ( $old_settings['interval'] !== $new_interval ) {
@@ -177,6 +178,13 @@ function gasf_calsync_admin_page() {
 					<th>Color</th>
 					<th>Action</th>
 				</tr>
+			<tr>
+				<th><label for="gasf_calsync_window_days">History Window (days)</label></th>
+				<td>
+					<input type="number" name="gasf_calsync_window_days" id="gasf_calsync_window_days" class="small-text" min="0" step="1" value="<?php echo esc_attr( (int) ( $settings['window_days'] ?? 365 ) ); ?>" />
+					<p class="description">Only sync events whose end is within this many days in the past (plus all future). <strong>0 = no limit</strong> (keep all past events). Recurring events are always kept.</p>
+				</td>
+			</tr>
 			</thead>
 			<tbody>
 			<?php foreach ( $sources as $src ) :
@@ -853,7 +861,8 @@ function gasf_calsync_sync_source( $src, $cal_id ) {
 	}
 
 	/* Step 2b: Sync window - keep last 1 year + all future (and all recurring). */
-	$cutoff       = time() - YEAR_IN_SECONDS;
+	$win_days     = (int) ( gasf_calsync_get_settings()['window_days'] ?? 365 );
+	$cutoff       = $win_days > 0 ? time() - $win_days * DAY_IN_SECONDS : 0;
 	$total_parsed = count( $ics_events );
 	$ics_events   = array_filter( $ics_events, function ( $ev ) use ( $cutoff ) {
 		if ( ! empty( $ev['rrule'] ) ) { return true; } // recurring may extend into the future

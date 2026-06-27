@@ -202,7 +202,7 @@ function gasf_mec_sideload_cover( $post_id, $cover ) {
 	if ( $att ) {
 		@unlink( $tmp ); // identical master found -- no new file stored
 	} else {
-		$att = media_handle_sideload( array('name'=>'fb-cover-'.$post_id.'.jpg','tmp_name'=>$tmp), $post_id, null );
+		$att = media_handle_sideload( array('name'=>'fb-cover-'.$post_id.'-'.substr( $sha ? $sha : md5( $cover->source ), 0, 12 ).'.jpg','tmp_name'=>$tmp), $post_id, null );
 		if ( is_wp_error( $att ) ) { @unlink($tmp); return false; }
 		if ( $sha ) update_post_meta( $att, '_gasf_cover_sha1', $sha ); // register this master in the table
 	}

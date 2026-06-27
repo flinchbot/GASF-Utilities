@@ -116,6 +116,19 @@ function gasf_mec_fb_refresh_event( $post_id, $dry_run = false ) {
 					if ( function_exists( 'gasf_mec_log' ) ) {
 						gasf_mec_log( "FB-IMG-HEAL post=$post_id thumb=$thumb_id file missing — forcing re-sideload" );
 					}
+				} elseif ( ! $dry_run && gasf_mec_cover_deepcheck_due( $post_id ) ) {
+					// Same cover.id + file present: verify IMAGE CONTENT still matches FB
+					// (catches FB swapping the cover image without changing cover.id).
+					update_post_meta( $post_id, 'gasf_mec_cover_deepcheck_at', time() );
+					$stored_sha = (string) get_post_meta( $thumb_id, '_gasf_cover_sha1', true );
+					$live_sha   = gasf_mec_remote_sha1( $ev->cover->source );
+					if ( $live_sha && $live_sha !== $stored_sha ) {
+						$changes['image'] = true;
+						$audit[] = 'image: cover content changed (same cover.id) - re-syncing';
+						if ( function_exists( 'gasf_mec_log' ) ) {
+							gasf_mec_log( "FB-IMG-CONTENT post=$post_id cover.id stable but image bytes changed - re-syncing" );
+						}
+					}
 				}
 			} else {
 				// No thumbnail at all — force re-sideload.
@@ -181,6 +194,27 @@ function gasf_mec_write_time_meta_only( $post_id, $f ) {
 	update_post_meta($post_id,'mec_start_time_hour',$f['sh']); update_post_meta($post_id,'mec_start_time_minutes',$f['sm']); update_post_meta($post_id,'mec_start_time_ampm',$f['sap']);
 	update_post_meta($post_id,'mec_end_time_hour',$f['eh']); update_post_meta($post_id,'mec_end_time_minutes',$f['em']); update_post_meta($post_id,'mec_end_time_ampm',$f['eap']);
 	update_post_meta($post_id,'mec_start_day_seconds',$f['ssec']); update_post_meta($post_id,'mec_end_day_seconds',$f['esec']);
+}
+
+function gasf_mec_cover_deepcheck_due( $post_id ) {
+	static $far_budget = 10; // per-run cap on far-off (>14d) deep checks to avoid a burst
+	$start    = strtotime( (string) get_post_meta( $post_id, 'mec_start_date', true ) );
+	$within14 = $start && $start <= time() + 14 * DAY_IN_SECONDS;
+	if ( $within14 ) { return true; } // imminent events: content-check every run
+	$last = (int) get_post_meta( $post_id, 'gasf_mec_cover_deepcheck_at', true );
+	if ( time() - $last < 20 * HOUR_IN_SECONDS ) { return false; } // far event checked recently
+	if ( $far_budget <= 0 ) { return false; }
+	$far_budget--;
+	return true;
+}
+
+function gasf_mec_remote_sha1( $url ) {
+	if ( ! function_exists( 'download_url' ) ) { require_once ABSPATH . 'wp-admin/includes/file.php'; }
+	$tmp = download_url( $url, 20 );
+	if ( is_wp_error( $tmp ) ) { return ''; }
+	$sha = @sha1_file( $tmp );
+	@unlink( $tmp );
+	return $sha ? $sha : '';
 }
 
 function gasf_mec_sideload_cover( $post_id, $cover ) {

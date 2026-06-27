@@ -818,6 +818,26 @@ function gasf_calsync_list_managed( $cal_id, $label ) {
  * @param  string $cal_id  Destination Google Calendar ID.
  * @return array           { label, created, updated, deleted, skipped, errors[] }
  */
+function gasf_calsync_dt_key( $x ) {
+	if ( ! is_array( $x ) ) { return ''; }
+	if ( isset( $x['date'] ) ) { return 'd:' . $x['date']; }
+	if ( isset( $x['dateTime'] ) ) {
+		$dt = (string) $x['dateTime'];
+		$tz = isset( $x['timeZone'] ) ? (string) $x['timeZone'] : 'UTC';
+		try {
+			if ( preg_match( '/(Z|[+\-]\d{2}:?\d{2})$/', $dt ) ) {
+				$d = new DateTime( $dt );
+			} else {
+				$d = new DateTime( $dt, new DateTimeZone( $tz ?: 'UTC' ) );
+			}
+			return 't:' . $d->getTimestamp();
+		} catch ( Exception $e ) {
+			return 't:' . $dt;
+		}
+	}
+	return '';
+}
+
 function gasf_calsync_sync_source( $src, $cal_id ) {
 	$result = array(
 		'label'   => $src['label'] ?? '?',
@@ -904,18 +924,13 @@ function gasf_calsync_sync_source( $src, $cal_id ) {
 			/* ---- UPDATE (only if changed) ---- */
 			$existing = $managed[ $uid ];
 			$changed  = false;
-			$changed  = $changed || ( ( $existing['summary']     ?? '' ) !== ( $body['summary']     ?? '' ) );
-			$changed  = $changed || ( ( $existing['description'] ?? '' ) !== ( $body['description'] ?? '' ) );
-			$changed  = $changed || ( ( $existing['location']    ?? '' ) !== ( $body['location']    ?? '' ) );
-			$changed  = $changed || ( ( (string)( $existing['colorId'] ?? '' ) ) !== ( (string)( $body['colorId'] ?? '' ) ) );
-			/* Compare start/end loosely */
-			$existing_start = json_encode( $existing['start'] ?? array() );
-			$body_start     = json_encode( $body['start'] ?? array() );
-			$existing_end   = json_encode( $existing['end'] ?? array() );
-			$body_end       = json_encode( $body['end'] ?? array() );
-			$changed        = $changed || ( $existing_start !== $body_start );
-			$changed        = $changed || ( $existing_end   !== $body_end   );
-
+			$changed  = $changed || ( trim( (string) ( $existing['summary']     ?? '' ) ) !== trim( (string) ( $body['summary']     ?? '' ) ) );
+			$changed  = $changed || ( trim( (string) ( $existing['description'] ?? '' ) ) !== trim( (string) ( $body['description'] ?? '' ) ) );
+			$changed  = $changed || ( trim( (string) ( $existing['location']    ?? '' ) ) !== trim( (string) ( $body['location']    ?? '' ) ) );
+			$changed  = $changed || ( ( (string) ( $existing['colorId'] ?? '' ) ) !== ( (string) ( $body['colorId'] ?? '' ) ) );
+			/* Start/end by canonical instant (Google adds the tz offset to dateTime, so a raw compare always differs). */
+			$changed  = $changed || ( gasf_calsync_dt_key( $existing['start'] ?? array() ) !== gasf_calsync_dt_key( $body['start'] ?? array() ) );
+			$changed  = $changed || ( gasf_calsync_dt_key( $existing['end']   ?? array() ) !== gasf_calsync_dt_key( $body['end']   ?? array() ) );
 			if ( $changed ) {
 				$put = gasf_calsync_api( 'PUT', '/calendars/' . $encoded_cal . '/events/' . $existing['id'], $body );
 				if ( is_wp_error( $put ) ) {

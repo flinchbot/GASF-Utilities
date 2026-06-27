@@ -693,14 +693,30 @@ function gasf_calsync_event_body( $src, $ev ) {
 
 	/* Build start/end */
 	$all_day = ! empty( $ev['dtstart_allday'] );
+	$start_ts = strtotime( (string) ( $ev['dtstart'] ?? '' ) );
+	$end_ts   = ! empty( $ev['dtend'] ) ? strtotime( (string) $ev['dtend'] ) : false;
 	if ( $all_day ) {
 		$start = array( 'date' => $ev['dtstart'] ?? '' );
-		$end   = array( 'date' => $ev['dtend']   ?? $ev['dtstart'] ?? '' );
+		if ( $end_ts && $end_ts > $start_ts ) {
+			$end = array( 'date' => $ev['dtend'] );
+		} else {
+			$end = array( 'date' => date( 'Y-m-d', ( $start_ts ?: time() ) + DAY_IN_SECONDS ) );
+		}
 	} else {
 		$tzid  = $ev['dtstart_tzid'] ?? 'UTC';
 		$start = array( 'dateTime' => $ev['dtstart'] ?? '', 'timeZone' => $tzid );
-		$end   = array( 'dateTime' => $ev['dtend']   ?? $ev['dtstart'] ?? '',
-		                'timeZone' => $ev['dtend_tzid'] ?? $tzid );
+		if ( $end_ts && $end_ts > $start_ts ) {
+			$end = array( 'dateTime' => $ev['dtend'], 'timeZone' => $ev['dtend_tzid'] ?? $tzid );
+		} else {
+			$z = ( substr( (string) ( $ev['dtstart'] ?? '' ), -1 ) === 'Z' );
+			$end_dt = $ev['dtstart'] ?? '';
+			try {
+				$d = new DateTime( rtrim( (string) $ev['dtstart'], 'Z' ), new DateTimeZone( $z ? 'UTC' : ( $tzid ?: 'UTC' ) ) );
+				$d->modify( '+1 hour' );
+				$end_dt = $d->format( 'Y-m-d\TH:i:s' ) . ( $z ? 'Z' : '' );
+			} catch ( Exception $e ) {}
+			$end = array( 'dateTime' => $end_dt, 'timeZone' => $ev['dtend_tzid'] ?? $tzid );
+		}
 	}
 
 	$body = array(

@@ -68,15 +68,23 @@ function gasf_calsync_admin_page() {
 		$url   = esc_url_raw( wp_unslash( $_POST['gasf_calsync_url'] ?? '' ) );
 		$color = max( 1, min( 11, (int) ( $_POST['gasf_calsync_color'] ?? 1 ) ) );
 		if ( $label && $url ) {
-			$sources   = gasf_calsync_get_sources();
-			$sources[] = array(
-				'id'    => uniqid( 'src_', true ),
-				'label' => $label,
-				'url'   => $url,
-				'color' => $color,
-			);
+			$sources = gasf_calsync_get_sources();
+			$edit_id = sanitize_text_field( wp_unslash( $_POST['gasf_calsync_edit_id'] ?? '' ) );
+			$updated = false;
+			if ( $edit_id !== '' ) {
+				foreach ( $sources as &$row ) {
+					if ( isset( $row['id'] ) && $row['id'] === $edit_id ) {
+						$row['label'] = $label; $row['url'] = $url; $row['color'] = $color;
+						$updated = true; break;
+					}
+				}
+				unset( $row );
+			}
+			if ( ! $updated ) {
+				$sources[] = array( 'id' => uniqid( 'src_', true ), 'label' => $label, 'url' => $url, 'color' => $color );
+			}
 			update_option( 'gasf_calsync_sources', $sources, false );
-			$notice = '<div class="notice notice-success is-dismissible"><p>Calendar source added.</p></div>';
+			$notice = '<div class="notice notice-success is-dismissible"><p>Source ' . ( $updated ? 'updated' : 'added' ) . '.</p></div>';
 		} else {
 			$notice = '<div class="notice notice-error"><p>Label and URL are required.</p></div>';
 		}
@@ -184,6 +192,12 @@ function gasf_calsync_admin_page() {
 						<?php echo esc_html( $cid . ' — ' . $cname ); ?>
 					</td>
 					<td>
+						<button type="button" class="button button-small gasf-calsync-edit"
+							data-id="<?php echo esc_attr( $src['id'] ?? '' ); ?>"
+							data-label="<?php echo esc_attr( $src['label'] ?? '' ); ?>"
+							data-url="<?php echo esc_attr( $src['url'] ?? '' ); ?>"
+							data-color="<?php echo esc_attr( isset( $src['color'] ) ? (int) $src['color'] : 1 ); ?>"
+							style="margin-right:4px">Edit</button>
 						<button type="submit" name="gasf_calsync_delete" value="<?php echo esc_attr( $src['id'] ?? '' ); ?>"
 							class="button button-small button-link-delete"
 							onclick="return confirm('Delete this source? Its events will NOT be removed from Google Calendar unless you sync again with this source absent.')">
@@ -232,7 +246,9 @@ function gasf_calsync_admin_page() {
 				</td>
 			</tr>
 		</table>
-		<p><button type="submit" name="gasf_calsync_add" value="1" class="button button-primary">Add Source</button></p>
+		<input type="hidden" name="gasf_calsync_edit_id" id="gasf_calsync_edit_id" value="" />
+		<p><button type="submit" id="gasf_calsync_add_btn" name="gasf_calsync_add" value="1" class="button button-primary">Add Source</button>
+		<button type="button" id="gasf_calsync_cancel_edit" class="button" style="display:none;margin-left:6px">Cancel edit</button></p>
 
 		<hr>
 
@@ -277,6 +293,28 @@ function gasf_calsync_admin_page() {
 			<span style="color:#666;margin-left:10px">Runs all sources immediately (same as the WP-cron job).</span>
 		</p>
 	</form>
+<script>
+jQuery(function($){
+  $('.gasf-calsync-edit').on('click', function(){
+    var b=$(this);
+    $('#gasf_calsync_edit_id').val(b.attr('data-id'));
+    $('#gasf_calsync_label').val(b.attr('data-label'));
+    $('#gasf_calsync_url').val(b.attr('data-url'));
+    $('#gasf_calsync_color').val(b.attr('data-color'));
+    $('#gasf_calsync_add_btn').text('Save Changes');
+    $('#gasf_calsync_cancel_edit').show();
+    $('html,body').animate({scrollTop: $('#gasf_calsync_label').closest('table').offset().top - 60}, 300);
+  });
+  $('#gasf_calsync_cancel_edit').on('click', function(){
+    $('#gasf_calsync_edit_id').val('');
+    $('#gasf_calsync_label').val('');
+    $('#gasf_calsync_url').val('');
+    $('#gasf_calsync_color').val('1');
+    $('#gasf_calsync_add_btn').text('Add Source');
+    $(this).hide();
+  });
+});
+</script>
 
 	<hr>
 

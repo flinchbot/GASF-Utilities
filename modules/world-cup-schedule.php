@@ -1,8 +1,8 @@
 <?php
 /**
- * [world_cup_schedule] — live schedule of upcoming 'World Cup Watch Party' MEC events.
- * Queries MEC on render (past games drop off automatically; new FB-synced games appear),
- * each row links to the MEC event page. 1-hour transient cache. Gate gasf_mec_enable_wc_schedule.
+ * [world_cup_schedule] — live schedule of upcoming 'World Cup Watch Party' events.
+ * Queries native gasf_event posts on render (past games drop off automatically),
+ * each row links to the event page. 1-hour transient cache. Gate gasf_mec_enable_wc_schedule.
  * Task: world-cup page reorg.
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
@@ -25,22 +25,24 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_wc_schedule' ) ) {
 		if ( $cached !== false ) return $cached;
 
 		global $wpdb;
-		$today = date( 'Y-m-d' );
+		$now = time();
 		$ids = $wpdb->get_col( $wpdb->prepare(
 			"SELECT p.ID FROM {$wpdb->prefix}posts p
-			 JOIN {$wpdb->prefix}postmeta sd ON sd.post_id=p.ID AND sd.meta_key='mec_start_date'
-			 WHERE p.post_type='mec-events' AND p.post_status='publish'
-			 AND p.post_title LIKE 'World Cup Watch Party%' AND sd.meta_value >= %s", $today ) );
+			 JOIN {$wpdb->prefix}postmeta ts ON ts.post_id=p.ID AND ts.meta_key='_gasf_start_ts'
+			 WHERE p.post_type='gasf_event' AND p.post_status='publish'
+			 AND p.post_title LIKE 'World Cup Watch Party%' AND ts.meta_value >= %d
+			 ORDER BY ( ts.meta_value + 0 ) ASC", $now ) );
 
 		$rows = array();
 		foreach ( $ids as $id ) {
-			$sd = get_post_meta( $id, 'mec_start_date', true );
-			$ss = (int) get_post_meta( $id, 'mec_start_day_seconds', true );
-			$rows[] = array( 'id'=>$id, 'date'=>$sd, 'sec'=>$ss,
-				'name'=>trim( preg_replace( '/^World Cup Watch Party:?\s*/i', '', get_the_title( $id ) ) ),
+			$start = get_post_meta( $id, '_gasf_start', true ); // 'Y-m-d H:i:s' site-local
+			$dt    = $start ? date_create_immutable_from_format( 'Y-m-d H:i:s', $start, wp_timezone() ) : false;
+			if ( ! $dt ) { continue; }
+			$rows[] = array( 'id'=>$id, 'sort'=>$dt->format( 'YmdHis' ), 'dt'=>$dt,
+				'name'=>trim( preg_replace( '/^World Cup Watch Party:?\s*/i', '', html_entity_decode( get_the_title( $id ), ENT_QUOTES ) ) ),
 				'url'=>get_permalink( $id ) );
 		}
-		usort( $rows, function( $a, $b ) { return ( $a['date'].sprintf('%05d',$a['sec']) ) <=> ( $b['date'].sprintf('%05d',$b['sec']) ); } );
+		usort( $rows, function( $a, $b ) { return strcmp( $a['sort'], $b['sort'] ); } );
 
 		if ( empty( $rows ) ) {
 			$html = '<p style="padding:14px 0"><em>The next watch parties will appear here as soon as the knockout-round matchups are confirmed. Check back soon!</em></p>';
@@ -55,8 +57,8 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_wc_schedule' ) ) {
 		$n = count( $rows );
 		foreach ( $rows as $i => $r ) {
 			$u = esc_url( $r['url'] );
-			$dlabel = date( 'D, M j', strtotime( $r['date'] ) );
-			$tlabel = date( 'g:i A', strtotime( '00:00' ) + $r['sec'] );
+			$dlabel = $r['dt']->format( 'D, M j' );
+			$tlabel = $r['dt']->format( 'g:i A' );
 			$match  = gasf_wc_schedule_flag( $r['name'] ) . esc_html( $r['name'] );
 			$border = ( $i < $n - 1 ) ? ' style="border-bottom:1px solid #ddd"' : '';
 			$h .= '<tr class="gasf-wc-row"' . $border . '>'
@@ -70,7 +72,6 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_wc_schedule' ) ) {
 	}
 	add_shortcode( 'world_cup_schedule', 'gasf_wc_schedule_shortcode' );
 
-	// keep it fresh: clear the cache whenever a mec-event is saved or the FB refresh runs
-	add_action( 'save_post_mec-events', function(){ delete_transient( 'gasf_wc_schedule_html' ); } );
-	add_action( 'mec_advimp_sync_hook', function(){ delete_transient( 'gasf_wc_schedule_html' ); }, 996 );
+	// keep it fresh: clear the cache whenever a gasf_event is saved
+	add_action( 'save_post_gasf_event', function(){ delete_transient( 'gasf_wc_schedule_html' ); } );
 }

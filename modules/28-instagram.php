@@ -279,7 +279,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 .gig--masonry .gig-tile img{height:auto}
 .gig-tile:hover img{transform:scale(1.06)}
 .gig-badge{position:absolute;top:6px;right:8px;color:#fff;font-size:13px;text-shadow:0 1px 3px rgba(0,0,0,.6);pointer-events:none}
-.gig-cap{position:absolute;left:0;right:0;bottom:0;padding:10px 9px 8px;color:#fff;font-size:12px;line-height:1.35;text-align:left;background:linear-gradient(rgba(38,38,38,.45),rgba(38,38,38,.82));text-shadow:0 1px 2px rgba(0,0,0,.55);opacity:0;transition:opacity .25s}
+.gig-cap{position:absolute;left:0;right:0;bottom:0;padding:10px 9px 8px;color:#fff;font-size:12px;line-height:1.35;text-align:left;background:linear-gradient(rgba(32,32,32,.6),rgba(32,32,32,.95));text-shadow:0 1px 2px rgba(0,0,0,.55);opacity:0;transition:opacity .25s}
 .gig-tile:hover .gig-cap{opacity:1}
 .gig-arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:38px;height:38px;border-radius:50%;border:0;background:rgba(255,255,255,.92);box-shadow:0 1px 6px rgba(0,0,0,.25);font-size:22px;line-height:1;cursor:pointer}
 .gig-prev{left:-6px}.gig-next{right:-6px}

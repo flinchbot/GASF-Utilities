@@ -45,7 +45,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$r = wp_remote_get( $url, array( 'timeout' => 20 ) );
 		if ( is_wp_error( $r ) ) { return array( array(), $r->get_error_message() ); }
 		$b = json_decode( wp_remote_retrieve_body( $r ), true );
-		if ( ( $b['status'] ?? '' ) !== 'OK' ) { return array( array(), 'Google: ' . ( $b['status'] ?? '?' ) . ' ' . ( $b['error_message'] ?? '' ) ); }
+		if ( ( $b['status'] ?? '' ) !== 'OK' ) { return array( array(), 'Google: ' . ( $b['status'] ?? ( 'HTTP ' . wp_remote_retrieve_response_code( $r ) ) ) . ' ' . ( $b['error_message'] ?? '' ) ); }
 		$out = array();
 		foreach ( (array) ( $b['result']['reviews'] ?? array() ) as $rv ) {
 			$out[] = array(
@@ -69,8 +69,10 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			'headers' => array( 'Authorization' => 'Bearer ' . $key ),
 		) );
 		if ( is_wp_error( $r ) ) { return array( array(), $r->get_error_message() ); }
-		$b = json_decode( wp_remote_retrieve_body( $r ), true );
+		$hc = (int) wp_remote_retrieve_response_code( $r );
+		$b  = json_decode( wp_remote_retrieve_body( $r ), true );
 		if ( isset( $b['error'] ) ) { return array( array(), 'Yelp: ' . ( $b['error']['description'] ?? $b['error']['code'] ?? '?' ) ); }
+		if ( $hc < 200 || $hc >= 300 ) { return array( array(), 'Yelp: HTTP ' . $hc . ' — key rejected (activate a plan on your Fusion app)' ); }
 		$out = array();
 		foreach ( (array) ( $b['reviews'] ?? array() ) as $rv ) {
 			$out[] = array(
@@ -95,8 +97,10 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			'headers' => array( 'accept' => 'application/json', 'Referer' => home_url( '/' ) ),
 		) );
 		if ( is_wp_error( $r ) ) { return array( array(), $r->get_error_message() ); }
-		$b = json_decode( wp_remote_retrieve_body( $r ), true );
+		$hc = (int) wp_remote_retrieve_response_code( $r );
+		$b  = json_decode( wp_remote_retrieve_body( $r ), true );
 		if ( isset( $b['error'] ) ) { return array( array(), 'TripAdvisor: ' . ( $b['error']['message'] ?? '?' ) ); }
+		if ( $hc < 200 || $hc >= 300 ) { return array( array(), 'TripAdvisor: HTTP ' . $hc ); }
 		$out = array();
 		foreach ( (array) ( $b['data'] ?? array() ) as $rv ) {
 			$txt = trim( ( $rv['title'] ?? '' ) . ( ! empty( $rv['title'] ) ? ' — ' : '' ) . ( $rv['text'] ?? '' ) );

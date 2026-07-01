@@ -65,6 +65,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 	add_action( 'template_redirect', function () {
 		if ( gasf_seo_yoast_active() ) { return; }
 		$uri = $_SERVER['REQUEST_URI'] ?? '';
+		if ( 0 === strpos( $uri, '/wp-sitemap' ) ) { return; } // core sitemaps — never touch
 		if ( preg_match( '#^/sitemap_index\.xml#', $uri ) || preg_match( '#-sitemap\d*\.xml$#', $uri ) ) {
 			wp_redirect( home_url( '/wp-sitemap.xml' ), 301 );
 			exit;

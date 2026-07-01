@@ -249,8 +249,9 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 .grv-badge{margin-left:auto;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}
 .grv-badge--google{background:#4285F4}.grv-badge--yelp{background:#d32323;font-size:8px}.grv-badge--tripadvisor{background:#00aa6c}.grv-badge--facebook{background:#1877f2}
 .grv-text{margin:0;font-size:14px;line-height:1.5;color:var(--grv-fg,#333)}
-.grv-foot{font-size:12px;color:#888}
-.grv-foot a{color:inherit;text-decoration:underline}
+.grv-foot{font-size:12px;color:#777}
+.grv-foot a{color:#2b6cb0 !important;text-decoration:underline}
+.grv-foot a:hover{color:#1a1a2e !important}
 .grv-arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:38px;height:38px;border-radius:50%;border:0;background:rgba(255,255,255,.95);box-shadow:0 1px 6px rgba(0,0,0,.25);font-size:22px;cursor:pointer}
 .grv-prev{left:-6px}.grv-next{right:-6px}
 @media(max-width:900px){.grv{--grv-cols:2}}

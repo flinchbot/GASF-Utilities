@@ -130,7 +130,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 	function gasf_ig_settings() {
 		return wp_parse_args( (array) get_option( 'gasf_ig_settings', array() ), array(
 			'count' => 24, 'ttl' => 3600, 'layout' => 'grid', 'columns' => 4, 'captions' => 0, 'gap' => 10, 'radius' => 8,
-			'header' => 1, 'header_label' => 'Instagram:',
+			'header' => 1,
 		) );
 	}
 
@@ -231,9 +231,8 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$meta  = gasf_ig_meta();
 		$uname = (string) ( $meta['username'] ?? '' );
 		if ( (int) $a['header'] && $uname !== '' ) {
-			$hlabel = (string) $s['header_label'];
-			echo '<a class="gig-head" href="' . esc_url( 'https://www.instagram.com/' . rawurlencode( $uname ) . '/' ) . '" target="_blank" rel="noopener">';
-			if ( $hlabel !== '' ) { echo '<span class="gig-head__label">' . esc_html( $hlabel ) . '</span> '; }
+			echo '<a class="gig-head" href="' . esc_url( 'https://www.instagram.com/' . rawurlencode( $uname ) . '/' ) . '" target="_blank" rel="noopener" aria-label="Instagram: ' . esc_attr( $uname ) . '">';
+			echo '<svg class="gig-head__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.6" cy="6.4" r="1.15" fill="currentColor" stroke="none"/></svg>';
 			echo '<span class="gig-head__user">' . esc_html( $uname ) . '</span></a>';
 		}
 
@@ -280,9 +279,10 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		?>
 <style>
 .gig{position:relative;--gig-cols:4;--gig-gap:10px;--gig-radius:8px}
-.gig-head{display:inline-flex;align-items:baseline;gap:6px;margin:0 0 12px;font-size:var(--gig-head-size,17px);line-height:1.2;text-decoration:none;color:inherit}
-.gig-head__label{color:var(--gig-head-label,#666);font-weight:600}
-.gig-head__user{font-weight:700;color:var(--gig-head-user,inherit)}
+.gig-head{display:inline-flex;align-items:center;gap:8px;margin:0 0 12px;font-size:var(--gig-head-size,18px);line-height:1;text-decoration:none;color:var(--gig-head-color,var(--gasf-gold,#EF9F27))}
+.gig-head__icon{width:1.4em;height:1.4em;flex:0 0 auto}
+.gig-head__user{font-weight:700;letter-spacing:.2px}
+.gig-head:hover{filter:brightness(1.12)}
 .gig-head:hover .gig-head__user{text-decoration:underline}
 .gig-track{display:grid;grid-template-columns:repeat(var(--gig-cols),1fr);gap:var(--gig-gap)}
 .gig--masonry .gig-track{display:block;column-count:var(--gig-cols);column-gap:var(--gig-gap)}
@@ -389,7 +389,6 @@ document.addEventListener('click',function(e){
 					'gap'      => max( 0, (int) ( $_POST['gap'] ?? 10 ) ),
 					'radius'   => max( 0, (int) ( $_POST['radius'] ?? 8 ) ),
 					'header'   => ! empty( $_POST['header'] ) ? 1 : 0,
-					'header_label' => sanitize_text_field( wp_unslash( $_POST['header_label'] ?? 'Instagram:' ) ),
 				), false );
 				echo '<div class="notice notice-success is-dismissible"><p>Settings saved.</p></div>';
 			}
@@ -437,8 +436,8 @@ document.addEventListener('click',function(e){
 				<tr><th scope="row">Gap (px)</th><td><input type="number" name="gap" min="0" max="40" value="<?php echo (int) $s['gap']; ?>" class="small-text"></td></tr>
 				<tr><th scope="row">Corner radius (px)</th><td><input type="number" name="radius" min="0" max="40" value="<?php echo (int) $s['radius']; ?>" class="small-text"></td></tr>
 				<tr><th scope="row">Hover captions</th><td><label><input type="checkbox" name="captions" value="1" <?php checked( $s['captions'], 1 ); ?>> Show caption on hover</label></td></tr>
-				<tr><th scope="row">Header link</th><td><label><input type="checkbox" name="header" value="1" <?php checked( $s['header'], 1 ); ?>> Show a linked header above the feed</label>
-					<p><input type="text" name="header_label" class="regular-text" value="<?php echo esc_attr( $s['header_label'] ); ?>" placeholder="Instagram:"> <span class="description">Label before the username (the username links to the profile). Leave blank for username only.</span></p></td></tr>
+				<tr><th scope="row">Header link</th><td><label><input type="checkbox" name="header" value="1" <?php checked( $s['header'], 1 ); ?>> Show the Instagram logo + username above the feed (links to the profile)</label>
+					<p class="description">Colored with your theme gold (<code>--gasf-gold</code>). Override with CSS: <code>.gig-head{--gig-head-color:#…}</code>.</p></td></tr>
 				<tr><th scope="row">Cache TTL (sec)</th><td><input type="number" name="ttl" min="300" step="300" value="<?php echo (int) $s['ttl']; ?>" class="small-text"> <span class="description">how often to re-pull from Instagram</span></td></tr>
 			</table>
 			<p><button name="gasf_ig_action" value="save" class="button button-primary">Save defaults</button></p>

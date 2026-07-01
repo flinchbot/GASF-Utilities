@@ -29,7 +29,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 add_action( 'admin_menu', function () {
 	if ( function_exists( 'gasf_utilities_add_tab' ) ) {
-		gasf_utilities_add_tab( 'calsync', 'Calendar Sync', 'gasf_calsync_admin_page', 25 );
+		gasf_utilities_add_tab( 'calsync', 'Calendar Sync', 'gasf_calsync_admin_page', 50 );
 	}
 } );
 

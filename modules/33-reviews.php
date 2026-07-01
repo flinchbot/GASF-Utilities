@@ -253,7 +253,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 
 	/* ============================ admin ============================ */
 	add_action( 'admin_menu', function () {
-		if ( function_exists( 'gasf_utilities_add_tab' ) ) { gasf_utilities_add_tab( 'reviews', 'Reviews', 'gasf_reviews_admin', 26 ); }
+		if ( function_exists( 'gasf_utilities_add_tab' ) ) { gasf_utilities_add_tab( 'reviews', 'Reviews', 'gasf_reviews_admin', 61 ); }
 	} );
 
 	function gasf_reviews_admin() {

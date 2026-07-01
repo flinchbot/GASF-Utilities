@@ -430,7 +430,7 @@ document.addEventListener('click',function(e){
 	/* ============================ admin tab ============================ */
 	add_action( 'admin_menu', function () {
 		if ( function_exists( 'gasf_utilities_add_tab' ) ) {
-			gasf_utilities_add_tab( 'instagram', 'Instagram', 'gasf_ig_admin_page', 22 );
+			gasf_utilities_add_tab( 'instagram', 'Instagram', 'gasf_ig_admin_page', 60 );
 		}
 	} );
 

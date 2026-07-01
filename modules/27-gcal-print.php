@@ -272,7 +272,7 @@ if ( ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_en
 	/* ---------- admin tab ---------- */
 	add_action( 'admin_menu', function () {
 		if ( function_exists( 'gasf_utilities_add_tab' ) ) {
-			gasf_utilities_add_tab( 'gcal-print', 'Internal Calendar', 'gasf_gcalprint_admin_page', 24 );
+			gasf_utilities_add_tab( 'gcal-print', 'Internal Calendar', 'gasf_gcalprint_admin_page', 51 );
 		}
 	} );
 

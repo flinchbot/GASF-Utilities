@@ -365,7 +365,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 	/* ============================ admin tab ============================ */
 	add_action( 'admin_menu', function () {
 		if ( function_exists( 'gasf_utilities_add_tab' ) ) {
-			gasf_utilities_add_tab( 'seo', 'SEO', 'gasf_seo_admin_page', 23 );
+			gasf_utilities_add_tab( 'seo', 'SEO', 'gasf_seo_admin_page', 30 );
 		}
 	} );
 

@@ -225,7 +225,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 
 	/* ---- admin ---- */
 	add_action( 'admin_menu', function () {
-		if ( function_exists( 'gasf_utilities_add_tab' ) ) { gasf_utilities_add_tab( 'fbhealth', 'FB Token', 'gasf_fbh_admin', 30 ); }
+		if ( function_exists( 'gasf_utilities_add_tab' ) ) { gasf_utilities_add_tab( 'fbhealth', 'FB Token', 'gasf_fbh_admin', 62 ); }
 	} );
 
 	function gasf_fbh_admin() {

@@ -46,7 +46,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 	/* ---- admin ---- */
 	add_action( 'admin_menu', function () {
 		if ( function_exists( 'gasf_utilities_add_tab' ) ) {
-			gasf_utilities_add_tab( 'shortlinks', 'Short Links', 'gasf_sl_admin', 25 );
+			gasf_utilities_add_tab( 'shortlinks', 'Short Links', 'gasf_sl_admin', 40 );
 		}
 	} );
 

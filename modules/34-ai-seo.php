@@ -109,7 +109,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 
 	/* ---- admin ---- */
 	add_action( 'admin_menu', function () {
-		if ( function_exists( 'gasf_utilities_add_tab' ) ) { gasf_utilities_add_tab( 'aiseo', 'Event SEO (AI)', 'gasf_aiseo_admin', 28 ); }
+		if ( function_exists( 'gasf_utilities_add_tab' ) ) { gasf_utilities_add_tab( 'aiseo', 'Event SEO (AI)', 'gasf_aiseo_admin', 31 ); }
 	} );
 
 	function gasf_aiseo_admin() {

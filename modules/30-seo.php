@@ -213,6 +213,11 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			$ov = gasf_seo_meta( $id, 'og_image' );
 			if ( $ov ) { return $ov; }
 			if ( has_post_thumbnail( $id ) ) { return get_the_post_thumbnail_url( $id, 'full' ); }
+			// Fall back to the first image in the content (matches Yoast's behaviour).
+			$p = get_post( $id );
+			if ( $p && preg_match( '/<img[^>]+src=["\']([^"\']+)/i', (string) $p->post_content, $m ) ) {
+				return $m[1];
+			}
 		}
 		$def = gasf_seo_settings()['og_image'];
 		return $def ?: '';

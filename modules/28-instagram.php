@@ -301,7 +301,13 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$page     = max( 1, min( 48, (int) ( $_GET['page'] ?? 12 ) ) );
 		$cap      = max( 1, min( 300, (int) ( $_GET['cap'] ?? 48 ) ) );
 		$captions = ! empty( $_GET['captions'] ) ? 1 : 0;
-		$pool = gasf_ig_get_media();
+		// Serve from the cached pool ONLY — this endpoint is anonymous (nopriv), and
+		// letting it fall through to gasf_ig_get_media() would let any visitor trigger
+		// the 45s Graph API pagination loop on a cold cache (worker-pinning DoS + IG
+		// quota burn). The hourly cron and the shortcode render keep the pool warm;
+		// load-more never needs items fresher than the page it extends.
+		$cache = (array) get_option( 'gasf_ig_media_cache', array() );
+		$pool  = ! empty( $cache['items'] ) && is_array( $cache['items'] ) ? $cache['items'] : array();
 		$end  = min( $cap, count( $pool ) );
 		$html = '';
 		$items = array();

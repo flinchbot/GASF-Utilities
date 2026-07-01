@@ -609,24 +609,12 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_sweep' ) ) {
 }
 
 /* =========================================================================
- * MODULE F — 'request' meta bloat cap (new)
- *
- * The importer appends a 'request' postmeta row on every step of every sync
- * (facebook.php / google.php / thirdparty.php) onto the schedule/history post.
- * These are read back only by the admin progress UI. On the cron path nobody
- * watches that UI, so the rows are pure bloat (19k+ rows, 6,991 on post 14656).
- * Block the write when NOT in an admin-ajax request (i.e. the cron/CLI path),
- * preserving the live manual-import progress UI.
+ * MODULE F — RETIRED (2026-07). It capped the MEC importer's 'request'
+ * postmeta bloat, but its add_post_metadata filter matched the generic
+ * meta key 'request' on EVERY post type from ANY plugin (silent data
+ * loss for anything else using that key). MEC is retired, so the cap is
+ * no longer needed — removed rather than scoped.
  * ========================================================================= */
-if ( gasf_mec_enabled( 'gasf_mec_enable_reqcap' ) ) {
-
-	add_filter( 'add_post_metadata', function ( $check, $object_id, $meta_key, $meta_value, $unique ) {
-		if ( $meta_key === 'request' && ! wp_doing_ajax() ) {
-			return true; // short-circuit add_metadata(): skip the DB write
-		}
-		return $check; // null normally -> proceed as usual
-	}, 10, 5 );
-}
 
 /* =========================================================================
  * Module G - Branded single-event template + CSS  (replaces Code Snippets #8/#9)

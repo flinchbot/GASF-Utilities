@@ -347,18 +347,12 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$mine   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='_gasf_seo_title' AND meta_value<>''" );
 		?>
 		<h2>SEO</h2>
-		<p>Native title / meta description / canonical / Open Graph / Twitter / WebSite-schema — the replacement for Yoast. It stays <strong>dormant while Yoast is active</strong> and takes over automatically once Yoast is removed.</p>
+		<p>Native SEO — page titles, meta descriptions, canonical, Open Graph &amp; Twitter cards, and WebSite schema. To edit one page, use the <strong>&ldquo;SEO (GASF)&rdquo;</strong> box on that page; the defaults below fill in everything you haven&rsquo;t set by hand.</p>
 		<table class="widefat striped" style="max-width:620px">
-			<tr><td>Yoast currently active</td><td><?php echo $yoast ? '<strong style="color:#8a6d3b">yes — this module is dormant</strong>' : '<span style="color:#1a7f37">no — this module is live</span>'; ?></td></tr>
-			<tr><td>Pages with a custom SEO title (ours)</td><td><?php echo esc_html( $mine ); ?></td></tr>
-			<tr><td>Sitemap</td><td><code>/wp-sitemap.xml</code> (WordPress core; old <code>/sitemap_index.xml</code> is 301'd here once Yoast is off)</td></tr>
+			<tr><td>Status</td><td><?php echo $yoast ? '<strong style="color:#8a6d3b">dormant</strong> — Yoast is still active' : '<strong style="color:#1a7f37">● active</strong>'; ?></td></tr>
+			<tr><td>Pages with a custom SEO title</td><td><?php echo esc_html( $mine ); ?></td></tr>
+			<tr><td>Sitemap</td><td><code>/wp-sitemap.xml</code> <span class="description">(WordPress core; old <code>/sitemap_index.xml</code> redirects here)</span></td></tr>
 		</table>
-
-		<h3 class="title">Step 1 — Import from Yoast</h3>
-		<p>Copies every custom SEO title &amp; meta description into our own meta and seeds the templates below, so nothing is lost when Yoast is deleted. Safe to run more than once (won't overwrite values you've already set here).</p>
-		<form method="post"><?php wp_nonce_field( 'gasf_seo_admin' ); ?>
-			<button name="gasf_seo_action" value="import" class="button button-primary">Import Yoast titles &amp; descriptions</button>
-		</form>
 
 		<h3 class="title">Templates &amp; defaults</h3>
 		<form method="post"><?php wp_nonce_field( 'gasf_seo_admin' ); ?>
@@ -367,14 +361,19 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				<tr><th scope="row">Home title</th><td><input type="text" name="title_home" value="<?php echo esc_attr( $s['title_home'] ); ?>" class="large-text"></td></tr>
 				<tr><th scope="row">Home meta description</th><td><textarea name="desc_home" rows="2" class="large-text"><?php echo esc_textarea( $s['desc_home'] ); ?></textarea></td></tr>
 				<tr><th scope="row">Page / post title</th><td><input type="text" name="title_single" value="<?php echo esc_attr( $s['title_single'] ); ?>" class="large-text"><p class="description">Vars: <code>%%title%%</code> <code>%%sitename%%</code> <code>%%sitedesc%%</code> <code>%%sep%%</code> <code>%%page%%</code></p></td></tr>
-				<tr><th scope="row">Default share image (OG)</th><td><input type="url" name="og_image" value="<?php echo esc_attr( $s['og_image'] ); ?>" class="large-text" placeholder="used when a page has no featured image"></td></tr>
+				<tr><th scope="row">Default share image (OG)</th><td><input type="url" name="og_image" value="<?php echo esc_attr( $s['og_image'] ); ?>" class="large-text" placeholder="used when a page has no image of its own"></td></tr>
 				<tr><th scope="row">Twitter @handle</th><td><input type="text" name="twitter" value="<?php echo esc_attr( $s['twitter'] ); ?>" class="regular-text" placeholder="@germantampa"></td></tr>
 			</table>
 			<p><button name="gasf_seo_action" value="save" class="button button-primary">Save settings</button></p>
 		</form>
 
-		<h3 class="title">Step 2 — cut over</h3>
-		<p>After importing: deactivate Yoast and reload a few pages to confirm titles/descriptions look right, then delete it. Remember to submit <code>/wp-sitemap.xml</code> in Google Search Console.</p>
+		<details style="margin-top:20px">
+			<summary style="cursor:pointer;color:#666">Yoast migration <?php echo $yoast ? '' : '&mdash; completed &#10003;'; ?></summary>
+			<p class="description" style="max-width:640px;margin-top:8px">Your Yoast titles &amp; descriptions were already imported into this plugin&rsquo;s own meta, so nothing depends on Yoast. Re-running is safe (it never overwrites values already set here) but is normally unnecessary.</p>
+			<form method="post"><?php wp_nonce_field( 'gasf_seo_admin' ); ?>
+				<button name="gasf_seo_action" value="import" class="button">Re-import from Yoast meta</button>
+			</form>
+		</details>
 		<?php
 	}
 }

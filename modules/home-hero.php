@@ -69,6 +69,10 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 	add_shortcode( 'gas_hero', 'gasf_hero_shortcode' );
 	function gasf_hero_shortcode() {
 		$e = gasf_hero_active();
+		// Recurring-hero resolver (modules/23-recurring-heroes.php) may override
+		// the standing/manual hero during a repeating event's window, or supply
+		// one when there is no manual hero at all.
+		$e = apply_filters( 'gasf_hero_active_entry', $e );
 		if ( ! $e ) { return ''; }
 		$img = wp_get_attachment_image( (int) $e['image_id'], 'full', false, array(
 			'class' => 'gasf-hero__img',
@@ -151,35 +155,32 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		}
 	}
 
-	/* ---------- upcoming MEC events (next N days) for quick-create ---------- */
+	/* ---------- upcoming GASF Events (next N days) for quick-create ---------- */
+	/* Repointed from retired Modern Events Calendar to the native gasf_event
+	 * calendar, which stores UTC unix timestamps in _gasf_start_ts / _gasf_end_ts. */
 	function gasf_hero_upcoming_events( $days = 7 ) {
-		global $wpdb;
-		$tz    = wp_timezone();
-		$today = ( new DateTime( 'now', $tz ) )->format( 'Y-m-d' );
-		$end   = ( new DateTime( "+$days days", $tz ) )->format( 'Y-m-d' );
+		$cpt   = defined( 'GASF_EVENTS_CPT' ) ? GASF_EVENTS_CPT : 'gasf_event';
+		$now   = time();
+		$until = $now + max( 1, (int) $days ) * DAY_IN_SECONDS;
 		$q = new WP_Query( array(
-			'post_type'      => 'mec-events',
+			'post_type'      => $cpt,
 			'post_status'    => 'publish',
 			'posts_per_page' => 40,
-			'meta_key'       => 'mec_start_date',
-			'orderby'        => 'meta_value',
+			'meta_key'       => '_gasf_start_ts',
+			'orderby'        => 'meta_value_num',
 			'order'          => 'ASC',
 			'no_found_rows'  => true,
 			'meta_query'     => array( array(
-				'key'     => 'mec_start_date',
-				'value'   => array( $today, $end ),
+				'key'     => '_gasf_start_ts',
+				'value'   => array( $now, $until ),
 				'compare' => 'BETWEEN',
-				'type'    => 'DATE',
+				'type'    => 'NUMERIC',
 			) ),
 		) );
 		$out = array();
 		foreach ( $q->posts as $p ) {
-			$sd = get_post_meta( $p->ID, 'mec_start_date', true );
-			if ( ! $sd ) { continue; }
-			$tsec  = (int) $wpdb->get_var( $wpdb->prepare( "SELECT time_start FROM {$wpdb->prefix}mec_events WHERE post_id=%d LIMIT 1", $p->ID ) );
-			$start = new DateTime( $sd, $tz );
-			$start->modify( "+{$tsec} seconds" );
-			$activate = ( clone $start )->modify( '-72 hours' );
+			$start_ts = (int) get_post_meta( $p->ID, '_gasf_start_ts', true );
+			if ( ! $start_ts ) { continue; }
 			$tid   = (int) get_post_thumbnail_id( $p->ID );
 			$out[] = array(
 				'id'       => $p->ID,
@@ -187,8 +188,8 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 				'image_id' => $tid,
 				'thumb'    => $tid ? wp_get_attachment_image_url( $tid, 'medium' ) : '',
 				'url'      => get_permalink( $p->ID ),
-				'activate' => $activate->format( 'Y-m-d\TH:i' ),
-				'when'     => wp_date( 'D M j · g:i a', $start->getTimestamp() ),
+				'activate' => wp_date( 'Y-m-d\TH:i', $start_ts - 72 * HOUR_IN_SECONDS ),
+				'when'     => wp_date( 'D M j · g:i a', $start_ts ),
 			);
 		}
 		wp_reset_postdata();
@@ -199,23 +200,17 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 	function gasf_hero_event_end_label( $event_id ) {
 		$dash = '<span style="color:#999">&mdash;</span>';
 		if ( ! $event_id ) { return $dash; }
+		$cpt = defined( 'GASF_EVENTS_CPT' ) ? GASF_EVENTS_CPT : 'gasf_event';
 		$p = get_post( $event_id );
-		if ( ! $p || $p->post_type !== 'mec-events' ) { return $dash; }
-		global $wpdb;
-		$tz  = wp_timezone();
-		$sd  = get_post_meta( $event_id, 'mec_start_date', true );
-		$ed  = get_post_meta( $event_id, 'mec_end_date', true );
-		if ( ! $sd ) { return $dash; }
-		$row    = $wpdb->get_row( $wpdb->prepare( "SELECT time_start, time_end FROM {$wpdb->prefix}mec_events WHERE post_id=%d LIMIT 1", $event_id ) );
-		$tstart = $row ? (int) $row->time_start : 0;
-		$tend   = $row ? (int) $row->time_end : 0;
-		$start  = ( new DateTime( $sd, $tz ) )->modify( "+{$tstart} seconds" );
-		$end    = ( new DateTime( ( $ed ?: $sd ), $tz ) )->modify( "+{$tend} seconds" );
-		if ( $end->getTimestamp() > $start->getTimestamp() ) {
-			return esc_html( wp_date( 'M j, Y g:i a', $end->getTimestamp() ) );
+		if ( ! $p || $p->post_type !== $cpt ) { return $dash; }
+		$start_ts = (int) get_post_meta( $event_id, '_gasf_start_ts', true );
+		$end_ts   = (int) get_post_meta( $event_id, '_gasf_end_ts', true );
+		if ( ! $start_ts ) { return $dash; }
+		if ( $end_ts > $start_ts ) {
+			return esc_html( wp_date( 'M j, Y g:i a', $end_ts ) );
 		}
-		// no recorded end time -> show the start time with an asterisk
-		return esc_html( wp_date( 'M j, Y g:i a', $start->getTimestamp() ) )
+		// no distinct end time -> show the start time with an asterisk
+		return esc_html( wp_date( 'M j, Y g:i a', $start_ts ) )
 			. ' <abbr title="No recorded end time" style="text-decoration:none;color:#b3122b;font-weight:700">*</abbr>';
 	}
 

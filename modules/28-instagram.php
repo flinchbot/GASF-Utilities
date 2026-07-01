@@ -130,58 +130,86 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 	function gasf_ig_settings() {
 		return wp_parse_args( (array) get_option( 'gasf_ig_settings', array() ), array(
 			'count' => 24, 'ttl' => 3600, 'layout' => 'grid', 'columns' => 4, 'captions' => 0, 'gap' => 10, 'radius' => 8,
-			'header' => 1,
+			'header' => 1, 'max' => 48, 'more' => 'button',
 		) );
 	}
 
-	/** Normalized items from cache; refetches when stale. */
+	/** Normalize one Graph media object into our item shape (sideloads images). */
+	function gasf_ig_normalize( $m ) {
+		$type       = strtoupper( $m['media_type'] ?? 'IMAGE' );
+		$is_reel    = ( ( $m['media_product_type'] ?? '' ) === 'REELS' );
+		$poster_src = ( $type === 'VIDEO' ) ? ( $m['thumbnail_url'] ?? $m['media_url'] ?? '' ) : ( $m['media_url'] ?? '' );
+		$item = array(
+			'id'        => $m['id'] ?? '',
+			'type'      => $type === 'VIDEO' ? ( $is_reel ? 'reel' : 'video' ) : ( $type === 'CAROUSEL_ALBUM' ? 'album' : 'image' ),
+			'permalink' => $m['permalink'] ?? '',
+			'caption'   => (string) ( $m['caption'] ?? '' ),
+			'time'      => $m['timestamp'] ?? '',
+			'poster'    => gasf_ig_sideload( $poster_src ),
+			'video'     => $type === 'VIDEO' ? ( $m['media_url'] ?? '' ) : '',
+			'children'  => array(),
+		);
+		if ( ! empty( $m['children']['data'] ) ) {
+			foreach ( $m['children']['data'] as $ch ) {
+				$ct = strtoupper( $ch['media_type'] ?? 'IMAGE' );
+				$item['children'][] = array(
+					'type'   => $ct === 'VIDEO' ? 'video' : 'image',
+					'poster' => gasf_ig_sideload( $ct === 'VIDEO' ? ( $ch['thumbnail_url'] ?? '' ) : ( $ch['media_url'] ?? '' ) ),
+					'video'  => $ct === 'VIDEO' ? ( $ch['media_url'] ?? '' ) : '',
+				);
+			}
+		}
+		return $item;
+	}
+
+	/** The normalized item pool from cache; paginates the Graph API up to the pool size when stale. */
 	function gasf_ig_get_media( $force = false ) {
 		$s     = gasf_ig_settings();
 		$cache = (array) get_option( 'gasf_ig_media_cache', array() );
 		$fresh = isset( $cache['ts'] ) && ( time() - (int) $cache['ts'] ) < (int) $s['ttl'];
 		if ( ! $force && $fresh && ! empty( $cache['items'] ) ) { return $cache['items']; }
-
-		// Single-flight lock so concurrent hits don't all fetch.
 		if ( ! $force && get_transient( 'gasf_ig_fetching' ) && ! empty( $cache['items'] ) ) { return $cache['items']; }
-		set_transient( 'gasf_ig_fetching', 1, 120 );
+		set_transient( 'gasf_ig_fetching', 1, 180 );
 
+		$target = max( 1, min( 300, max( (int) $s['count'], (int) $s['max'] ) ) );
 		$fields = 'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,children{media_type,media_url,thumbnail_url}';
-		$res = gasf_ig_api( '/me/media', array( 'fields' => $fields, 'limit' => max( 1, min( 90, (int) $s['count'] ) ) ) );
-		if ( is_wp_error( $res ) || empty( $res['data'] ) ) {
-			delete_transient( 'gasf_ig_fetching' );
-			return $cache['items'] ?? array();
-		}
+		$items  = array();
+		$after  = '';
+		$budget = microtime( true ) + 45; // bounded; the hourly cron keeps the pool warm
+		do {
+			$args = array( 'fields' => $fields, 'limit' => max( 1, min( 50, $target - count( $items ) ) ) );
+			if ( $after ) { $args['after'] = $after; }
+			$res = gasf_ig_api( '/me/media', $args );
+			if ( is_wp_error( $res ) || empty( $res['data'] ) ) { break; }
+			foreach ( $res['data'] as $m ) { $items[] = gasf_ig_normalize( $m ); }
+			$after = $res['paging']['cursors']['after'] ?? '';
+			$next  = $res['paging']['next'] ?? '';
+		} while ( $after && ! empty( $next ) && count( $items ) < $target && microtime( true ) < $budget );
 
-		$items = array();
-		foreach ( $res['data'] as $m ) {
-			$type = strtoupper( $m['media_type'] ?? 'IMAGE' );
-			$is_reel = ( ( $m['media_product_type'] ?? '' ) === 'REELS' );
-			$poster_src = ( $type === 'VIDEO' ) ? ( $m['thumbnail_url'] ?? $m['media_url'] ?? '' ) : ( $m['media_url'] ?? '' );
-			$item = array(
-				'id'        => $m['id'] ?? '',
-				'type'      => $type === 'VIDEO' ? ( $is_reel ? 'reel' : 'video' ) : ( $type === 'CAROUSEL_ALBUM' ? 'album' : 'image' ),
-				'permalink' => $m['permalink'] ?? '',
-				'caption'   => (string) ( $m['caption'] ?? '' ),
-				'time'      => $m['timestamp'] ?? '',
-				'poster'    => gasf_ig_sideload( $poster_src ),
-				'video'     => $type === 'VIDEO' ? ( $m['media_url'] ?? '' ) : '',
-				'children'  => array(),
-			);
-			if ( ! empty( $m['children']['data'] ) ) {
-				foreach ( $m['children']['data'] as $ch ) {
-					$ct = strtoupper( $ch['media_type'] ?? 'IMAGE' );
-					$item['children'][] = array(
-						'type'   => $ct === 'VIDEO' ? 'video' : 'image',
-						'poster' => gasf_ig_sideload( $ct === 'VIDEO' ? ( $ch['thumbnail_url'] ?? '' ) : ( $ch['media_url'] ?? '' ) ),
-						'video'  => $ct === 'VIDEO' ? ( $ch['media_url'] ?? '' ) : '',
-					);
-				}
-			}
-			$items[] = $item;
-		}
+		if ( ! $items ) { delete_transient( 'gasf_ig_fetching' ); return $cache['items'] ?? array(); }
 		update_option( 'gasf_ig_media_cache', array( 'ts' => time(), 'items' => $items ), false );
 		delete_transient( 'gasf_ig_fetching' );
 		return $items;
+	}
+
+	/** One grid tile button (shared by the shortcode and the load-more AJAX). */
+	function gasf_ig_tile( $it, $idx, $captions ) {
+		$badge = $it['type'] === 'reel' ? '&#9658;' : ( $it['type'] === 'video' ? '&#9658;' : ( $it['type'] === 'album' ? '&#9783;' : '' ) );
+		$h  = '<button class="gig-tile" data-idx="' . (int) $idx . '" aria-label="Open post">';
+		$h .= '<img loading="lazy" src="' . esc_url( $it['poster'] ) . '" alt="' . esc_attr( wp_trim_words( wp_strip_all_tags( $it['caption'] ), 12 ) ) . '">';
+		if ( $badge ) { $h .= '<span class="gig-badge">' . $badge . '</span>'; }
+		if ( $captions && $it['caption'] !== '' ) { $h .= '<span class="gig-cap">' . esc_html( wp_trim_words( wp_strip_all_tags( $it['caption'] ), 14 ) ) . '</span>'; }
+		$h .= '</button>';
+		return $h;
+	}
+
+	/** Lightbox data payload for one item. */
+	function gasf_ig_item_data( $it ) {
+		return array(
+			't'  => $it['type'], 'p' => $it['poster'], 'v' => $it['video'],
+			'c'  => wp_strip_all_tags( $it['caption'] ), 'l' => $it['permalink'],
+			'ch' => array_map( function ( $x ) { return array( 't' => $x['type'], 'p' => $x['poster'], 'v' => $x['video'] ); }, $it['children'] ),
+		);
 	}
 
 	/* ==================== cron: refresh token + warm cache ==================== */
@@ -206,6 +234,8 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			'gap'      => $s['gap'],
 			'radius'   => $s['radius'],
 			'header'   => $s['header'],
+			'max'      => $s['max'],
+			'more'     => $s['more'],
 		), $atts, 'gasf_instagram' );
 
 		$items = gasf_ig_get_media();
@@ -214,10 +244,15 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				? '<p style="color:#b3122b">[gasf_instagram] No Instagram media yet — connect the token in GASF Utilities → Instagram.</p>'
 				: '';
 		}
-		$items  = array_slice( $items, 0, max( 1, (int) $a['count'] ) );
 		$layout = in_array( $a['layout'], array( 'grid', 'masonry', 'carousel' ), true ) ? $a['layout'] : 'grid';
 		$cols   = max( 1, min( 8, (int) $a['columns'] ) );
 		$uid    = 'gig' . wp_rand( 1000, 9999 );
+
+		$page = max( 1, (int) $a['count'] );
+		$cap  = min( count( $items ), max( $page, (int) $a['max'] ) );
+		$more = in_array( $a['more'], array( 'off', 'button', 'infinite' ), true ) ? $a['more'] : 'button';
+		if ( $layout === 'carousel' ) { $more = 'off'; } // the carousel is a fixed strip
+		$initial = array_slice( $items, 0, $page );
 
 		$style = sprintf(
 			'--gig-cols:%d;--gig-gap:%dpx;--gig-radius:%dpx;',
@@ -241,34 +276,43 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			echo '<button class="gig-arrow gig-prev" aria-label="Previous">&#8249;</button>';
 		}
 		echo '<div class="gig-track">';
-		foreach ( $items as $i => $it ) {
-			$badge = $it['type'] === 'reel' ? '&#9658;' : ( $it['type'] === 'video' ? '&#9658;' : ( $it['type'] === 'album' ? '&#9783;' : '' ) );
-			echo '<button class="gig-tile" data-idx="' . (int) $i . '" aria-label="Open post">';
-			echo '<img loading="lazy" src="' . esc_url( $it['poster'] ) . '" alt="' . esc_attr( wp_trim_words( wp_strip_all_tags( $it['caption'] ), 12 ) ) . '">';
-			if ( $badge ) { echo '<span class="gig-badge">' . $badge . '</span>'; } // phpcs:ignore
-			if ( (int) $a['captions'] && $it['caption'] !== '' ) {
-				echo '<span class="gig-cap">' . esc_html( wp_trim_words( wp_strip_all_tags( $it['caption'] ), 14 ) ) . '</span>';
-			}
-			echo '</button>';
+		foreach ( $initial as $i => $it ) {
+			echo gasf_ig_tile( $it, $i, (int) $a['captions'] ); // phpcs:ignore -- escaped inside the helper
 		}
 		echo '</div>';
 		if ( $layout === 'carousel' ) {
 			echo '<button class="gig-arrow gig-next" aria-label="Next">&#8250;</button>';
 		}
 		echo '</div>';
-		// Data for the lightbox.
-		$data = array_map( function ( $it ) {
-			return array(
-				't'  => $it['type'],
-				'p'  => $it['poster'],
-				'v'  => $it['video'],
-				'c'  => wp_strip_all_tags( $it['caption'] ),
-				'l'  => $it['permalink'],
-				'ch' => array_map( function ( $x ) { return array( 't' => $x['type'], 'p' => $x['poster'], 'v' => $x['video'] ); }, $it['children'] ),
-			);
-		}, $items );
+		if ( $more !== 'off' && $cap > $page ) {
+			echo '<div class="gig-more-wrap"><button class="gig-more" data-uid="' . esc_attr( $uid ) . '" data-offset="' . (int) $page . '" data-page="' . (int) $page . '" data-cap="' . (int) $cap . '" data-captions="' . (int) $a['captions'] . '" data-mode="' . esc_attr( $more ) . '">Load more</button></div>';
+		}
+		// Lightbox data for the initial page only (light first paint); load-more appends the rest.
+		$data = array_map( 'gasf_ig_item_data', $initial );
 		echo '<script>window.gasfIg=window.gasfIg||{};window.gasfIg[' . wp_json_encode( $uid ) . ']=' . wp_json_encode( $data ) . ';</script>';
 		return ob_get_clean();
+	}
+
+	/* ============================ load-more (AJAX) ============================ */
+	add_action( 'wp_ajax_gasf_ig_more', 'gasf_ig_ajax_more' );
+	add_action( 'wp_ajax_nopriv_gasf_ig_more', 'gasf_ig_ajax_more' );
+	function gasf_ig_ajax_more() {
+		$offset   = max( 0, (int) ( $_GET['offset'] ?? 0 ) );
+		$page     = max( 1, min( 48, (int) ( $_GET['page'] ?? 12 ) ) );
+		$cap      = max( 1, min( 300, (int) ( $_GET['cap'] ?? 48 ) ) );
+		$captions = ! empty( $_GET['captions'] ) ? 1 : 0;
+		$pool = gasf_ig_get_media();
+		$end  = min( $cap, count( $pool ) );
+		$html = '';
+		$items = array();
+		$i = $offset;
+		foreach ( array_slice( $pool, $offset, $page ) as $it ) {
+			if ( $i >= $end ) { break; }
+			$html   .= gasf_ig_tile( $it, $i, $captions );
+			$items[] = gasf_ig_item_data( $it );
+			$i++;
+		}
+		wp_send_json( array( 'html' => $html, 'items' => $items, 'nextOffset' => $i, 'done' => ( $i >= $end ) ) );
 	}
 
 	/* ============================ assets (once) ============================ */
@@ -313,9 +357,14 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 .gig-lb__dots{display:flex;gap:6px;justify-content:center}
 .gig-lb__dots i{width:8px;height:8px;border-radius:50%;background:#666}
 .gig-lb__dots i.on{background:#fff}
+.gig-more-wrap{text-align:center;margin:16px 0 0}
+.gig-more{display:inline-block;padding:10px 26px;border:0;border-radius:30px;cursor:pointer;font-weight:700;font-size:14px;color:var(--gig-more-fg,#1a1a2e);background:var(--gig-more-bg,var(--gasf-gold,#EF9F27));transition:filter .2s}
+.gig-more:hover{filter:brightness(1.08)}
+.gig-more[data-busy]{opacity:.6;cursor:default}
 @media(max-width:600px){.gig{--gig-cols:3}.gig--carousel{--gig-cols:2}}
 </style>
 <script>
+window.gasfIgAjax=<?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
 (function(){
 if(window.gasfIgInit)return;window.gasfIgInit=1;
 function el(t,c){var e=document.createElement(t);if(c)e.className=c;return e;}
@@ -347,7 +396,23 @@ function nav(d){var it=state.items[state.i];var fr=frames(it);
 }
 function open(items,i){state.items=items;state.i=i;state.ci=0;if(!lb)build();render();lb.classList.add('open');document.body.style.overflow='hidden';}
 function close(){lb.classList.remove('open');media.innerHTML='';document.body.style.overflow='';}
+function loadMore(btn){
+  if(btn.getAttribute('data-busy'))return;btn.setAttribute('data-busy','1');var label=btn.textContent;btn.textContent='Loading…';
+  var uid=btn.getAttribute('data-uid'),off=+btn.getAttribute('data-offset'),page=+btn.getAttribute('data-page'),cap=+btn.getAttribute('data-cap'),caps=btn.getAttribute('data-captions')||'0';
+  var u=(window.gasfIgAjax||'/wp-admin/admin-ajax.php')+'?action=gasf_ig_more&offset='+off+'&page='+page+'&cap='+cap+'&captions='+caps;
+  fetch(u,{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(d){
+    var box=document.getElementById(uid);
+    if(box&&d.html){box.querySelector('.gig-track').insertAdjacentHTML('beforeend',d.html);}
+    if(window.gasfIg&&window.gasfIg[uid]&&d.items&&d.items.length){window.gasfIg[uid]=window.gasfIg[uid].concat(d.items);}
+    btn.setAttribute('data-offset',d.nextOffset);btn.removeAttribute('data-busy');btn.textContent=label;
+    if(d.done){var w=btn.closest('.gig-more-wrap');if(w&&w.parentNode)w.parentNode.removeChild(w);}
+  }).catch(function(){btn.removeAttribute('data-busy');btn.textContent=label;});
+}
+var gio=('IntersectionObserver'in window)?new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting&&e.target.getAttribute('data-mode')==='infinite'){loadMore(e.target);}});},{rootMargin:'400px'}):null;
+function gwire(){if(!gio)return;var bs=document.querySelectorAll('.gig-more[data-mode="infinite"]');for(var i=0;i<bs.length;i++){if(!bs[i]._gio){bs[i]._gio=1;gio.observe(bs[i]);}}}
+if(document.readyState!=='loading')gwire();document.addEventListener('DOMContentLoaded',gwire);
 document.addEventListener('click',function(e){
+  var mb=e.target.closest('.gig-more');if(mb){e.preventDefault();loadMore(mb);return;}
   var t=e.target.closest('.gig-tile');if(t){var box=t.closest('.gig');var items=window.gasfIg&&window.gasfIg[box.id];if(items){e.preventDefault();open(items,+t.getAttribute('data-idx'));}return;}
   var ar=e.target.closest('.gig-arrow');if(ar){var g=ar.closest('.gig');var tr=g.querySelector('.gig-track');tr.scrollBy({left:(ar.classList.contains('gig-next')?1:-1)*tr.clientWidth*0.8,behavior:'smooth'});}
 });
@@ -389,6 +454,8 @@ document.addEventListener('click',function(e){
 					'gap'      => max( 0, (int) ( $_POST['gap'] ?? 10 ) ),
 					'radius'   => max( 0, (int) ( $_POST['radius'] ?? 8 ) ),
 					'header'   => ! empty( $_POST['header'] ) ? 1 : 0,
+					'max'      => max( 1, min( 300, (int) ( $_POST['max'] ?? 48 ) ) ),
+					'more'     => in_array( $_POST['more'] ?? 'button', array( 'off', 'button', 'infinite' ), true ) ? $_POST['more'] : 'button',
 				), false );
 				echo '<div class="notice notice-success is-dismissible"><p>Settings saved.</p></div>';
 			}
@@ -431,7 +498,16 @@ document.addEventListener('click',function(e){
 							<option value="<?php echo esc_attr( $k ); ?>" <?php selected( $s['layout'], $k ); ?>><?php echo esc_html( $lbl ); ?></option>
 						<?php endforeach; ?>
 					</select></td></tr>
-				<tr><th scope="row">Posts to show</th><td><input type="number" name="count" min="1" max="90" value="<?php echo (int) $s['count']; ?>" class="small-text"></td></tr>
+				<tr><th scope="row">Posts per page</th><td><input type="number" name="count" min="1" max="90" value="<?php echo (int) $s['count']; ?>" class="small-text"> <span class="description">shown initially and per &ldquo;Load more&rdquo;</span></td></tr>
+				<tr><th scope="row">Load more</th><td>
+					<select name="more">
+						<?php foreach ( array( 'off' => 'Off (one page only)', 'button' => 'Load-more button', 'infinite' => 'Infinite scroll' ) as $k => $lbl ) : ?>
+							<option value="<?php echo esc_attr( $k ); ?>" <?php selected( $s['more'], $k ); ?>><?php echo esc_html( $lbl ); ?></option>
+						<?php endforeach; ?>
+					</select>
+					<label style="margin-left:10px">up to <input type="number" name="max" min="1" max="300" value="<?php echo (int) $s['max']; ?>" class="small-text"> posts total</label>
+					<p class="description">How many posts visitors can page through. Higher totals pull more into the cache on refresh; ~48&ndash;96 is a good range.</p>
+				</td></tr>
 				<tr><th scope="row">Columns</th><td><input type="number" name="columns" min="1" max="8" value="<?php echo (int) $s['columns']; ?>" class="small-text"></td></tr>
 				<tr><th scope="row">Gap (px)</th><td><input type="number" name="gap" min="0" max="40" value="<?php echo (int) $s['gap']; ?>" class="small-text"></td></tr>
 				<tr><th scope="row">Corner radius (px)</th><td><input type="number" name="radius" min="0" max="40" value="<?php echo (int) $s['radius']; ?>" class="small-text"></td></tr>

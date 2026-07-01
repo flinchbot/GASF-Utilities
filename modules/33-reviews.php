@@ -2,8 +2,8 @@
 /**
  * Reviews wall — modules/33-reviews.php
  *
- * Pulls reviews live from Google (Places API, up to 5), Yelp (Fusion, up to 3),
- * and TripAdvisor (Content API, up to 5), merges in hand-curated reviews
+ * Pulls reviews live from Google (Places API, up to 5) and TripAdvisor (Terra
+ * Content API, up to 5), merges in hand-curated reviews
  * (Facebook + any extras, since Meta's review API is locked down), caches the
  * result, refreshes daily, and renders a theme-native reviews wall via the
  * [gasf_reviews] shortcode.
@@ -20,7 +20,6 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 	function gasf_reviews_config() {
 		return wp_parse_args( (array) get_option( 'gasf_reviews_config', array() ), array(
 			'google'      => array( 'key' => '', 'place' => '', 'on' => 0 ),
-			'yelp'        => array( 'key' => '', 'biz' => '', 'on' => 0 ),
 			'tripadvisor' => array( 'key' => '', 'loc' => '', 'on' => 0 ),
 			'layout'      => 'grid',
 			'count'       => 9,
@@ -57,33 +56,6 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				'time'   => (int) ( $rv['time'] ?? 0 ),
 				'date'   => $rv['relative_time_description'] ?? '',
 				'url'    => $rv['author_url'] ?? '',
-			);
-		}
-		return array( $out, null );
-	}
-
-	function gasf_reviews_fetch_yelp( $key, $biz ) {
-		if ( ! $key || ! $biz ) { return array( array(), 'not configured' ); }
-		$r = wp_remote_get( 'https://api.yelp.com/v3/businesses/' . rawurlencode( $biz ) . '/reviews?limit=3&sort_by=yelp_sort', array(
-			'timeout' => 20,
-			'headers' => array( 'Authorization' => 'Bearer ' . $key ),
-		) );
-		if ( is_wp_error( $r ) ) { return array( array(), $r->get_error_message() ); }
-		$hc = (int) wp_remote_retrieve_response_code( $r );
-		$b  = json_decode( wp_remote_retrieve_body( $r ), true );
-		if ( isset( $b['error'] ) ) { return array( array(), 'Yelp: ' . ( $b['error']['description'] ?? $b['error']['code'] ?? '?' ) ); }
-		if ( $hc < 200 || $hc >= 300 ) { return array( array(), 'Yelp: HTTP ' . $hc . ' — key rejected (activate a plan on your Fusion app)' ); }
-		$out = array();
-		foreach ( (array) ( $b['reviews'] ?? array() ) as $rv ) {
-			$out[] = array(
-				'source' => 'yelp',
-				'author' => $rv['user']['name'] ?? '',
-				'avatar' => $rv['user']['image_url'] ?? '',
-				'rating' => (float) ( $rv['rating'] ?? 0 ),
-				'text'   => (string) ( $rv['text'] ?? '' ),
-				'time'   => strtotime( (string) ( $rv['time_created'] ?? '' ) ) ?: 0,
-				'date'   => isset( $rv['time_created'] ) ? date_i18n( 'M Y', strtotime( $rv['time_created'] ) ) : '',
-				'url'    => $rv['url'] ?? '',
 			);
 		}
 		return array( $out, null );
@@ -138,7 +110,6 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$items = array();
 		$status = array();
 		if ( ! empty( $c['google']['on'] ) ) { list( $g, $e ) = gasf_reviews_fetch_google( $c['google']['key'], $c['google']['place'] ); $items = array_merge( $items, $g ); $status['google'] = $e ?: count( $g ) . ' reviews'; }
-		if ( ! empty( $c['yelp']['on'] ) ) { list( $y, $e ) = gasf_reviews_fetch_yelp( $c['yelp']['key'], $c['yelp']['biz'] ); $items = array_merge( $items, $y ); $status['yelp'] = $e ?: count( $y ) . ' reviews'; }
 		if ( ! empty( $c['tripadvisor']['on'] ) ) { list( $t, $e ) = gasf_reviews_fetch_tripadvisor( $c['tripadvisor']['key'], $c['tripadvisor']['loc'] ); $items = array_merge( $items, $t ); $status['tripadvisor'] = $e ?: count( $t ) . ' reviews'; }
 		// curated (Facebook + extras) always included
 		foreach ( gasf_reviews_manual() as $m ) {
@@ -184,7 +155,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			'count'      => $c['count'],
 			'columns'    => $c['columns'],
 			'min_rating' => $c['min_rating'],
-			'source'     => '', // filter: google|yelp|tripadvisor|facebook
+			'source'     => '', // filter: google|tripadvisor|facebook
 		), $atts, 'gasf_reviews' );
 
 		$items = gasf_reviews_get();
@@ -243,7 +214,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		return '<span class="grv-star">' . $out . '</span>';
 	}
 	function gasf_reviews_icon( $src ) {
-		$m = array( 'google' => 'G', 'yelp' => 'Yelp', 'tripadvisor' => 'TA', 'facebook' => 'f' );
+		$m = array( 'google' => 'G', 'tripadvisor' => 'TA', 'facebook' => 'f' );
 		return esc_html( $m[ $src ] ?? '★' );
 	}
 
@@ -264,7 +235,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 .grv-name{font-weight:700;line-height:1.2;color:var(--grv-fg,#1a1a2e)!important}
 .grv-stars{color:#f5b301;font-size:15px;letter-spacing:1px}
 .grv-badge{margin-left:auto;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}
-.grv-badge--google{background:#4285F4}.grv-badge--yelp{background:#d32323;font-size:8px}.grv-badge--tripadvisor{background:#00aa6c}.grv-badge--facebook{background:#1877f2}
+.grv-badge--google{background:#4285F4}.grv-badge--tripadvisor{background:#00aa6c}.grv-badge--facebook{background:#1877f2}
 .grv-text{margin:0;font-size:14px;line-height:1.5;color:var(--grv-fg,#333)!important}
 .grv-foot{font-size:12px;color:#555!important}
 .grv-foot a{color:#2b6cb0 !important;text-decoration:underline}
@@ -292,7 +263,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			$act = sanitize_text_field( wp_unslash( $_POST['gasf_rv_action'] ) );
 			if ( 'save' === $act ) {
 				$c = gasf_reviews_config();
-				foreach ( array( 'google' => 'place', 'yelp' => 'biz', 'tripadvisor' => 'loc' ) as $s => $idf ) {
+				foreach ( array( 'google' => 'place', 'tripadvisor' => 'loc' ) as $s => $idf ) {
 					$newkey = trim( sanitize_text_field( wp_unslash( $_POST[ $s . '_key' ] ?? '' ) ) );
 					if ( '' !== $newkey ) { $c[ $s ]['key'] = $newkey; } // keep existing key when field left blank
 					$c[ $s ][ $idf ] = trim( sanitize_text_field( wp_unslash( $_POST[ $s . '_id' ] ?? '' ) ) );
@@ -310,7 +281,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			} elseif ( 'addm' === $act ) {
 				$m = gasf_reviews_manual();
 				$m[] = array(
-					'source' => in_array( $_POST['m_source'] ?? 'facebook', array( 'facebook', 'google', 'yelp', 'tripadvisor', 'other' ), true ) ? $_POST['m_source'] : 'facebook',
+					'source' => in_array( $_POST['m_source'] ?? 'facebook', array( 'facebook', 'google', 'tripadvisor', 'other' ), true ) ? $_POST['m_source'] : 'facebook',
 					'author' => sanitize_text_field( wp_unslash( $_POST['m_author'] ?? '' ) ),
 					'rating' => max( 1, min( 5, (int) ( $_POST['m_rating'] ?? 5 ) ) ),
 					'text'   => sanitize_textarea_field( wp_unslash( $_POST['m_text'] ?? '' ) ),
@@ -332,7 +303,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$mask = function ( $v ) { $v = (string) $v; return $v === '' ? '' : ( substr( $v, 0, 4 ) . str_repeat( '•', max( 0, min( 20, strlen( $v ) - 4 ) ) ) ); };
 		?>
 		<h2>Reviews</h2>
-		<p>Live reviews from Google, Yelp &amp; TripAdvisor, plus hand-curated ones (Facebook &amp; extras). Add the shortcode <code>[gasf_reviews]</code> to any page. Refreshes daily.</p>
+		<p>Live reviews from Google &amp; TripAdvisor, plus hand-curated ones (Facebook &amp; extras). Add the shortcode <code>[gasf_reviews]</code> to any page. Refreshes daily.</p>
 		<table class="widefat striped" style="max-width:640px"><tr><td>Last fetch</td><td><?php echo ! empty( $cache['ts'] ) ? esc_html( human_time_diff( (int) $cache['ts'] ) ) . ' ago · ' . count( $cache['items'] ?? array() ) . ' reviews cached' : 'never'; ?></td></tr>
 		<?php foreach ( (array) ( $cache['status'] ?? array() ) as $s => $st ) : ?><tr><td><?php echo esc_html( ucfirst( $s ) ); ?></td><td><?php echo esc_html( $st ); ?></td></tr><?php endforeach; ?></table>
 
@@ -342,7 +313,6 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				<?php
 				$srcs = array(
 					'google'      => array( 'Google', 'place', 'Place ID', 'API key with Places API enabled + billing' ),
-					'yelp'        => array( 'Yelp', 'biz', 'Business ID or alias', 'Yelp Fusion API key' ),
 					'tripadvisor' => array( 'TripAdvisor', 'loc', 'Location ID', 'Terra Content API key (X-API-Key) — from the Terra dashboard' ),
 				);
 				foreach ( $srcs as $s => $meta ) : list( $label, $idf, $idlabel, $hint ) = $meta; ?>
@@ -368,7 +338,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		<h3 class="title">Curated reviews (Facebook &amp; extras)</h3>
 		<form method="post" style="margin-bottom:14px"><?php wp_nonce_field( 'gasf_rv' ); ?>
 			<table class="form-table" role="presentation">
-				<tr><th scope="row">Source</th><td><select name="m_source"><?php foreach ( array( 'facebook', 'google', 'yelp', 'tripadvisor', 'other' ) as $s ) { echo "<option>$s</option>"; } ?></select>
+				<tr><th scope="row">Source</th><td><select name="m_source"><?php foreach ( array( 'facebook', 'google', 'tripadvisor', 'other' ) as $s ) { echo "<option>$s</option>"; } ?></select>
 					&nbsp; Rating <select name="m_rating"><?php for ( $i = 5; $i >= 1; $i-- ) { echo "<option>$i</option>"; } ?></select> stars
 					&nbsp; Date <input type="text" name="m_date" placeholder="2026-05-01 or May 2026" class="regular-text" style="width:150px"></td></tr>
 				<tr><th scope="row">Author</th><td><input type="text" name="m_author" class="regular-text" placeholder="Reviewer name"></td></tr>

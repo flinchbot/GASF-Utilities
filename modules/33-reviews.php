@@ -240,16 +240,16 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 .grv--carousel .grv-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:16px;scrollbar-width:none}
 .grv--carousel .grv-track::-webkit-scrollbar{display:none}
 .grv--carousel .grv-card{flex:0 0 calc((100% - (var(--grv-cols) - 1)*16px)/var(--grv-cols));scroll-snap-align:start}
-.grv-card{margin:0;background:var(--grv-bg,#fff);border:1px solid var(--grv-border,#e3e3e3);border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.06);display:flex;flex-direction:column;gap:10px}
+.grv-card{margin:0;background:var(--grv-bg,#fff);border:1px solid var(--grv-border,#e3e3e3);border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.06);display:flex;flex-direction:column;gap:10px;color:var(--grv-fg,#333)}
 .grv-head{display:flex;align-items:center;gap:10px}
 .grv-av{width:42px;height:42px;border-radius:50%;object-fit:cover;flex:0 0 auto}
 .grv-av--i{display:flex;align-items:center;justify-content:center;background:var(--gasf-gold,#EF9F27);color:#1a1a2e;font-weight:700;font-size:18px}
-.grv-name{font-weight:700;line-height:1.2}
+.grv-name{font-weight:700;line-height:1.2;color:var(--grv-fg,#1a1a2e)!important}
 .grv-stars{color:#f5b301;font-size:15px;letter-spacing:1px}
 .grv-badge{margin-left:auto;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}
 .grv-badge--google{background:#4285F4}.grv-badge--yelp{background:#d32323;font-size:8px}.grv-badge--tripadvisor{background:#00aa6c}.grv-badge--facebook{background:#1877f2}
-.grv-text{margin:0;font-size:14px;line-height:1.5;color:var(--grv-fg,#333)}
-.grv-foot{font-size:12px;color:#777}
+.grv-text{margin:0;font-size:14px;line-height:1.5;color:var(--grv-fg,#333)!important}
+.grv-foot{font-size:12px;color:#555!important}
 .grv-foot a{color:#2b6cb0 !important;text-decoration:underline}
 .grv-foot a:hover{color:#1a1a2e !important}
 .grv-arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:38px;height:38px;border-radius:50%;border:0;background:rgba(255,255,255,.95);box-shadow:0 1px 6px rgba(0,0,0,.25);font-size:22px;cursor:pointer}

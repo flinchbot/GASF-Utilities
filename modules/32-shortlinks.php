@@ -97,7 +97,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$here  = untrailingslashit( home_url() );
 		?>
 		<h2>Short Links</h2>
-		<p>Branded short URLs you create by hand — no auto-generated per-page links. A short link only <em>redirects</em> on a base domain that actually points at this site; other bases are for display/branding.</p>
+		<p>Branded short URLs you create by hand — no auto-generated per-page links. Every short link works on <strong>all</strong> your domains (they all funnel to this site), so pick whichever domain you like when you copy — <code>gtbay.club</code> is the shortest to share.</p>
 
 		<h3 class="title">Add / edit a short link</h3>
 		<form method="post"><?php wp_nonce_field( 'gasf_sl' ); ?>
@@ -114,12 +114,15 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		<table class="widefat striped">
 			<thead><tr><th>Short URL</th><th>Destination</th><th>Type</th><th>Clicks</th><th></th></tr></thead>
 			<tbody>
-			<?php if ( ! $links ) : ?><tr><td colspan="5">No short links yet.</td></tr><?php else : foreach ( $links as $l ) :
-				$full = untrailingslashit( $l['base'] ?? $here ) . '/' . $l['slug'];
-				$works = ( untrailingslashit( $l['base'] ?? '' ) === $here );
-			?>
+			<?php if ( ! $links ) : ?><tr><td colspan="5">No short links yet.</td></tr><?php else : foreach ( $links as $l ) : ?>
 				<tr>
-					<td><code><?php echo esc_html( $full ); ?></code> <button type="button" class="button-link gasf-sl-copy" data-u="<?php echo esc_attr( $full ); ?>" title="Copy">⧉</button><?php echo $works ? '' : ' <span title="This base domain does not point at this site, so the redirect won\'t resolve here" style="color:#b3122b">⚠</span>'; ?></td>
+					<td><code>/<?php echo esc_html( $l['slug'] ); ?></code>
+						<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">
+						<?php foreach ( $bases as $b ) : $u = untrailingslashit( $b ) . '/' . $l['slug']; $host = preg_replace( '#^https?://#', '', untrailingslashit( $b ) ); ?>
+							<button type="button" class="button button-small gasf-sl-copy" data-u="<?php echo esc_attr( $u ); ?>" title="Copy <?php echo esc_attr( $u ); ?>">⧉ <?php echo esc_html( $host ); ?>/…</button>
+						<?php endforeach; ?>
+						</div>
+					</td>
 					<td><small><?php echo esc_html( mb_substr( (string) ( $l['url'] ?? '' ), 0, 60 ) ); ?></small></td>
 					<td><?php echo (int) ( $l['code'] ?? 307 ); ?></td>
 					<td><?php echo (int) ( $l['clicks'] ?? 0 ); ?></td>
@@ -134,11 +137,11 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			</tbody>
 		</table>
 
-		<h3 class="title" style="margin-top:24px">Base domains</h3>
-		<p class="description">The dropdown of domains you can build short links on. <strong><?php echo esc_html( $here ); ?></strong> is this site (redirects work). Others only work once their DNS points here.</p>
+		<h3 class="title" style="margin-top:24px">Domains</h3>
+		<p class="description">Domains available on the copy buttons above. All of them resolve to this site (aliases 301 to <?php echo esc_html( $here ); ?>), so every short link works on every one — this list just controls the copy options.</p>
 		<table class="widefat striped" style="max-width:560px"><tbody>
 		<?php foreach ( $bases as $b ) : ?>
-			<tr><td><code><?php echo esc_html( $b ); ?></code><?php echo untrailingslashit( $b ) === $here ? ' <span style="color:#1a7f37">● live</span>' : ''; ?></td>
+			<tr><td><code><?php echo esc_html( $b ); ?></code><?php echo untrailingslashit( $b ) === $here ? ' <span style="color:#1a7f37">● this site</span>' : ' <span style="color:#666">alias → redirects here</span>'; ?></td>
 			<td style="text-align:right"><?php if ( untrailingslashit( $b ) !== $here ) : ?><form method="post" style="margin:0"><?php wp_nonce_field( 'gasf_sl' ); ?><input type="hidden" name="base" value="<?php echo esc_attr( $b ); ?>"><button name="gasf_sl_action" value="delbase" class="button-link-delete">Remove</button></form><?php endif; ?></td></tr>
 		<?php endforeach; ?>
 		</tbody></table>

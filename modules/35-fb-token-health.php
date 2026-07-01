@@ -282,7 +282,28 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$days = function ( $ts ) use ( $now ) { return $ts ? max( 0, (int) floor( ( (int) $ts - $now ) / DAY_IN_SECONDS ) ) . ' days' : '—'; };
 		?>
 		<h2>Facebook Feed Token Health</h2>
-		<p>Monitors the GASF-Events Facebook feed token: a daily live probe, auto-heal from the stored user token when possible, and an email alert when only a re-authorization can fix it.</p>
+		<?php
+		if ( function_exists( 'gasf_utilities_doc_panel' ) ) {
+			gasf_utilities_doc_panel( array(
+				'what'   => 'A watchdog for the access token the GASF-Events Facebook feed uses to import events. That token can silently stop working (Facebook\'s data-access window lapses, permissions change, password reset) — which is exactly how the feed died unnoticed in April 2026. This module probes the feed daily by <em>actually fetching events</em>, auto-repairs the token when it can, and emails you when only a human re-authorization will fix it.',
+				'needs'  => array(
+					'The Facebook feed configured in <strong>Events &rarr; Feeds</strong> (that\'s what is being monitored).',
+					'Your Meta app\'s <strong>App ID + App Secret</strong> (developers.facebook.com &rarr; your app &rarr; Settings &rarr; Basic) — used to inspect token health via Facebook\'s debug endpoint.',
+					'A stored <strong>user token</strong> (below) to enable auto-heal.',
+				),
+				'fields' => array(
+					'Status table'        => 'Live health: whether the last probe actually fetched events, token validity, hard expiry (should read "never"), the <strong>data-access window</strong> end date (the real countdown — when it lapses, only re-auth fixes it; you\'ll get a warning email ~5 days out), and whether auto-heal is armed.',
+					'Check now'           => 'Runs the full probe + heal + alert cycle immediately instead of waiting for the daily cron.',
+					'Re-derive Page token'=> 'Manually regenerates the feed\'s Page token from the stored user token and writes it into the feed — the same repair auto-heal performs.',
+					'Meta App ID / Secret'=> 'Identifies your Meta app to Facebook\'s token-debug API. The secret is stored server-side, shown never; leave blank to keep the saved one.',
+					'New user token'      => 'The self-heal fuel. When Facebook makes you re-authorize: Graph API Explorer &rarr; select your app &rarr; Get User Access Token (permissions <code>pages_show_list</code>, <code>pages_read_engagement</code>) &rarr; paste the token here and Save. Short-lived is fine — it\'s exchanged to long-lived and the Page token is re-derived automatically.',
+					'Page ID'             => 'The numeric Facebook Page being monitored (the German-American Society page). Only change if the page itself changes.',
+					'Alert email'         => 'Where failure and expiry-warning emails go. Alerts are throttled — one per distinct problem per day, not a daily nag.',
+				),
+				'notes'  => 'The alert emails contain the exact step-by-step fix, so future-you doesn\'t need to remember any of this. Putting the Meta app in Live mode with Advanced Access stretches the data-access window from ~14 to ~90 days (quarterly instead of biweekly re-auth).',
+			) );
+		}
+		?>
 
 		<table class="widefat striped" style="max-width:720px">
 			<tr><td>Feed</td><td><?php echo null === $idx ? '<strong style="color:#b32d2e">none configured</strong>' : esc_html( $feed['label'] ?? '' ) . ' — ' . ( ! empty( $feed['enabled'] ) ? 'enabled' : '<em>disabled</em>' ); ?></td></tr>

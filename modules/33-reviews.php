@@ -303,7 +303,28 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$mask = function ( $v ) { $v = (string) $v; return $v === '' ? '' : ( substr( $v, 0, 4 ) . str_repeat( '•', max( 0, min( 20, strlen( $v ) - 4 ) ) ) ); };
 		?>
 		<h2>Reviews</h2>
-		<p>Live reviews from Google &amp; TripAdvisor, plus hand-curated ones (Facebook &amp; extras). Add the shortcode <code>[gasf_reviews]</code> to any page. Refreshes daily.</p>
+		<?php
+		if ( function_exists( 'gasf_utilities_doc_panel' ) ) {
+			gasf_utilities_doc_panel( array(
+				'what'   => 'A reviews wall for the site — the <code>[gasf_reviews]</code> shortcode renders a grid/carousel/list of reviews with star ratings and source badges. Two feeds merge: <strong>live</strong> reviews pulled daily from Google and TripAdvisor, and <strong>curated</strong> reviews you paste in by hand (used for Facebook, whose API is locked down, or any standout review you want pinned).',
+				'needs'  => array(
+					'<strong>Google:</strong> a Places API key — must NOT be HTTP-referrer-restricted (server-to-server calls; restrict by IP <code>162.241.253.39</code> or None) — plus the business\'s Place ID.',
+					'<strong>TripAdvisor:</strong> a Terra Content API key (free tier: 5,000 calls/mo) plus the numeric location ID from the TripAdvisor listing URL.',
+					'The <code>[gasf_reviews]</code> shortcode on a page.',
+				),
+				'fields' => array(
+					'Google / TripAdvisor rows' => 'Per source: an <em>enable</em> checkbox, the <em>place/location ID</em> (which business to pull), and the <em>API key</em>. Keys are stored server-side and shown masked; leave the key field blank to keep the saved one. Note: Google\'s API returns only its 5 "most relevant" reviews — that\'s a Google limit, not ours.',
+					'Layout'                    => 'How the wall renders: grid (cards in columns), carousel (auto-scrolling row), or list (stacked).',
+					'Max reviews'               => 'Cap on how many reviews display, newest/best first after the rating filter.',
+					'Columns'                   => 'Card columns in grid layout (ignored by carousel/list).',
+					'Minimum rating'            => 'Hide reviews below this many stars. 4 keeps the wall positive without looking scrubbed; 1 shows everything.',
+					'Fetch reviews now'         => 'Pulls from both live sources immediately (normally the daily cron does this). The status table above shows each source\'s last result — errors surface there.',
+					'Curated reviews'           => 'Hand-entered reviews: source (sets the badge), star rating, date (free text, e.g. "May 2026"), author, text, and an optional link to the original. Use for Facebook recommendations and any review worth keeping visible permanently — curated entries never expire or get rotated out by the API.',
+				),
+				'notes'  => 'Yelp is deliberately absent — Yelp killed its free API tier ($229/mo now). If a live source errors, the wall keeps serving the last good cache, so the public page never breaks.',
+			) );
+		}
+		?>
 		<table class="widefat striped" style="max-width:640px"><tr><td>Last fetch</td><td><?php echo ! empty( $cache['ts'] ) ? esc_html( human_time_diff( (int) $cache['ts'] ) ) . ' ago · ' . count( $cache['items'] ?? array() ) . ' reviews cached' : 'never'; ?></td></tr>
 		<?php foreach ( (array) ( $cache['status'] ?? array() ) as $s => $st ) : ?><tr><td><?php echo esc_html( ucfirst( $s ) ); ?></td><td><?php echo esc_html( $st ); ?></td></tr><?php endforeach; ?></table>
 

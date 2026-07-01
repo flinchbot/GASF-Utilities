@@ -474,7 +474,31 @@ document.addEventListener('click',function(e){
 		$exp   = (int) ( $meta['expires'] ?? 0 );
 		?>
 		<h2>Native Instagram Feed</h2>
-		<p>A theme-native replacement for Smash Balloon's display. Pulls <strong>@<?php echo esc_html( $meta['username'] ?? 'your account' ); ?></strong>'s own posts, carousels and reels; sideloads images locally and caches them. Runs alongside Smash Balloon — nothing breaks while you switch.</p>
+		<?php
+		if ( function_exists( 'gasf_utilities_doc_panel' ) ) {
+			gasf_utilities_doc_panel( array(
+				'what'   => 'The site\'s own Instagram feed — the <code>[gasf_instagram]</code> shortcode renders <strong>@' . esc_html( $meta['username'] ?? 'your account' ) . '</strong>\'s posts, carousels and reels in a grid/masonry/carousel with a lightbox, fully styled to the theme. It replaced Smash Balloon\'s display. Images are downloaded to this server (fast, no Instagram CDN dependency at view time) and the post list is cached; an hourly cron keeps everything fresh and auto-renews the access token before its 60-day expiry.',
+				'needs'  => array(
+					'A valid <strong>Instagram access token</strong> — imported once from Smash Balloon (which owns the Meta app used for login) and self-refreshed ever since. Keep Smash Balloon <em>installed</em> as the re-auth fallback if the token ever fully dies.',
+					'The <code>[gasf_instagram]</code> shortcode on a page.',
+				),
+				'fields' => array(
+					'Connection status'      => 'Shows the connected account, token expiry, and cache age. Green = healthy; the hourly cron handles renewal, so you should never need the buttons below in normal life.',
+					'Refresh feed now'       => 'Re-pulls the latest posts immediately instead of waiting for the cache TTL — use right after posting something you want on the site now.',
+					'Refresh token'          => 'Manually renews the access token (normally automatic). Harmless to click.',
+					'Re-import token from SB'=> 'Recovery path: lifts a fresh token out of Smash Balloon after you re-authenticate there. Only needed if the token fully expires.',
+					'Layout'                 => 'Grid (uniform tiles), masonry (Pinterest-style variable heights), or carousel (horizontal scroller).',
+					'Posts per page'         => 'How many tiles show initially and how many each "Load more" adds.',
+					'Load more / up to N'    => 'Button, infinite scroll, or off — and the total cap visitors can page through. The cap also sets how many posts the cache pulls; 48–96 is the sweet spot.',
+					'Columns / Gap / Radius' => 'Grid geometry: column count, spacing between tiles (px), and tile corner rounding (px).',
+					'Hover captions'         => 'Shows the post caption over the image on hover (dark translucent backdrop for readability).',
+					'Header link'            => 'The Instagram logo + @username header above the feed, linking to the profile, in theme gold.',
+					'Cache TTL (sec)'        => 'How long the post list is served from cache before re-pulling from Instagram. 3600 (1 h) is right — visitors never wait on Instagram either way.',
+				),
+				'notes'  => 'Shortcode attributes override these defaults per page: <code>[gasf_instagram layout="carousel" count="8" columns="3" captions="1"]</code>. Hashtag/tagged feeds aren\'t possible with an own-account token (Meta requires an app-review\'d Facebook app).',
+			) );
+		}
+		?>
 
 		<h3 class="title">Connection</h3>
 		<table class="widefat striped" style="max-width:640px">

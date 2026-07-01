@@ -142,7 +142,26 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$last    = (array) get_option( 'gasf_aiseo_last', array() );
 		?>
 		<h2>Event SEO (AI)</h2>
-		<p>Uses Claude to write a meta description for every event that lacks one, grouped by event name (all "Biergarten" occurrences share one). It only fills blanks — never overwrites descriptions you've written by hand. The SEO module serves them; the Event JSON-LD schema comes from the events plugin.</p>
+		<?php
+		if ( function_exists( 'gasf_utilities_doc_panel' ) ) {
+			gasf_utilities_doc_panel( array(
+				'what'   => 'Uses Claude (Anthropic\'s AI) to write the ~155-character search-result meta description for every event that lacks one. Events are grouped by name — all "Biergarten" occurrences share one description — so hundreds of events need only dozens of AI calls. It fills blanks only and never overwrites a description you wrote by hand. The <strong>SEO</strong> tab\'s engine then serves what\'s written here.',
+				'needs'  => array(
+					'An <strong>Anthropic API key</strong> (from <code>console.anthropic.com</code>). Costs are pennies — each description is one small model call.',
+					'Events on the GASF calendar; new event names are picked up automatically.',
+				),
+				'fields' => array(
+					'Anthropic API key' => 'Your <code>sk-ant-…</code> key. Stored server-side only and never shown again — the field stays blank once saved; type here only to replace it.',
+					'Model'             => 'Which Claude model writes the copy. The default Haiku model is fast, cheap, and plenty for meta descriptions; use a Sonnet model for richer phrasing at higher cost.',
+					'Batch size'        => 'How many event names one click of Generate processes. Keep ≤ ~15 — each name is a live API call and too many can hit the page\'s time limit.',
+					'Save'              => 'Stores key/model/batch. Leaving the key blank keeps the saved one.',
+					'Test (sample)'     => 'One throw-away API call with a sample event to confirm the key + model work. Nothing is saved to any event.',
+					'Generate next N'   => 'Processes the next batch of blank event names and writes their descriptions. Click repeatedly to drain the backlog — the counter above shows what\'s left.',
+				),
+				'notes'  => 'A daily cron also backfills a few names automatically, so new recurring events get covered hands-free. Event structured data (JSON-LD) is separate — the GASF-Events plugin emits that.',
+			) );
+		}
+		?>
 		<table class="widefat striped" style="max-width:640px">
 			<tr><td>Event names with a description</td><td><?php echo (int) $withdesc; ?></td></tr>
 			<tr><td>Event names still needing one</td><td><strong><?php echo count( $pending ); ?></strong></td></tr>

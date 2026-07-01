@@ -430,7 +430,27 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$mine   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='_gasf_seo_title' AND meta_value<>''" );
 		?>
 		<h2>SEO</h2>
-		<p>Native SEO — page titles, meta descriptions, canonical, Open Graph &amp; Twitter cards, and WebSite schema. To edit one page, use the <strong>&ldquo;SEO (GASF)&rdquo;</strong> box on that page; the defaults below fill in everything you haven&rsquo;t set by hand.</p>
+		<?php
+		if ( function_exists( 'gasf_utilities_doc_panel' ) ) {
+			gasf_utilities_doc_panel( array(
+				'what'   => 'The site\'s SEO engine — the native replacement for Yoast. On every page it outputs the title tag, meta description, canonical URL, robots directives, Open Graph + Twitter share cards, and WebSite/Breadcrumb JSON-LD. Per-page values are edited in the <strong>"SEO (GASF)"</strong> box when editing that page (title, description, noindex, focus keyphrases with a live checklist); this tab holds the site-wide defaults that fill in everything you haven\'t set by hand.',
+				'needs'  => array(
+					'Nothing external — no API keys, no other plugin. (Yoast must stay deactivated or this module goes dormant to avoid double tags.)',
+				),
+				'fields' => array(
+					'Title separator'           => 'The character between the page name and site name in browser-tab titles, e.g. the "–" in "Events – German-American Society". Cosmetic but keep it consistent.',
+					'Home title'                => 'The exact title tag for the home page — your single most important SEO string. Lead with what you want to rank for (e.g. "German-American Society – German Club &amp; Events in Tampa Bay").',
+					'Home meta description'     => 'The ~155-character snippet Google shows under the home-page result. Write it like ad copy: who you are, where, and why to click.',
+					'Page / post title'         => 'The template for every other page\'s title tag. Variables: <code>%%title%%</code> (page name), <code>%%sitename%%</code>, <code>%%sitedesc%%</code>, <code>%%sep%%</code> (the separator above), <code>%%page%%</code> (pagination). The default "%%title%% %%sep%% %%sitename%%" is right for most sites.',
+					'Default share image (OG)'  => 'The image Facebook/WhatsApp/Slack show when a shared page has no featured or content image of its own. Should be ≥1200×630 px for full-size cards. Currently the building photo.',
+					'Twitter @handle'           => 'Attributed as the site\'s account on Twitter/X share cards. Optional — blank just omits the attribution.',
+					'Re-import from Yoast meta' => 'One-time migration tool: copies leftover Yoast titles/descriptions into this module\'s meta, never overwriting values already set here. Already ran; re-running is safe but unnecessary.',
+				),
+				'notes'  => 'Sitemap is WordPress core at <code>/wp-sitemap.xml</code> (the old Yoast <code>/sitemap_index.xml</code> 301s there). Event pages get their descriptions auto-filled by <strong>Event SEO (AI)</strong>; URL redirects live on the <strong>Redirects</strong> tab.',
+			) );
+		}
+		?>
+		<p>To edit one page, use the <strong>&ldquo;SEO (GASF)&rdquo;</strong> box on that page; the defaults below fill in everything you haven&rsquo;t set by hand.</p>
 		<table class="widefat striped" style="max-width:620px">
 			<tr><td>Status</td><td><?php echo $yoast ? '<strong style="color:#8a6d3b">dormant</strong> — Yoast is still active' : '<strong style="color:#1a7f37">● active</strong>'; ?></td></tr>
 			<tr><td>Pages with a custom SEO title</td><td><?php echo esc_html( $mine ); ?></td></tr>

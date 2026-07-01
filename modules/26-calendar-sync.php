@@ -162,7 +162,29 @@ function gasf_calsync_admin_page() {
 
 	?>
 	<h2>Calendar Sync</h2>
-	<p>Aggregates multiple ICS feeds into ONE destination Google Calendar using a Google service account. Each source gets a <code>[LABEL]</code> title prefix and its own event color.</p>
+	<?php
+	if ( function_exists( 'gasf_utilities_doc_panel' ) ) {
+		gasf_utilities_doc_panel( array(
+			'what'   => 'Mirrors one or more public ICS calendar feeds into a single internal <strong>Google Calendar</strong>, on a schedule. Each source calendar gets a <code>[LABEL]</code> prefix on its event titles and its own Google event color, so one Google Calendar can show the whole picture (site events + anything else you feed it). The <strong>Internal Calendar</strong> tab then prints that Google Calendar for the bulletin board.',
+			'needs'  => array(
+				'A <strong>Google service account</strong> whose JSON key is configured server-side, with the service-account email added as an editor ("Make changes to events") on the destination calendar in Google Calendar\'s sharing settings.',
+				'A public <strong>ICS feed URL</strong> for each source (the GASF events calendar publishes one).',
+				'WP-Cron ticking — on this low-traffic site a real cPanel cron runs <code>wp cron event run --due-now</code> so the schedule fires reliably.',
+			),
+			'fields' => array(
+				'Label / Tag'             => 'Short identifier for a source, e.g. <code>GASF</code>. Every event from that source gets a <code>[LABEL]</code> title prefix in Google Calendar so you can tell sources apart at a glance.',
+				'ICS URL'                 => 'The source\'s public iCalendar feed. This is where events are read from — nothing is ever written back to the source.',
+				'Event Color'             => 'The Google Calendar color (1–11) applied to this source\'s events — the visual grouping in the Google UI.',
+				'History Window (days)'   => 'How much of the past to keep mirrored. Events that ended more than N days ago are dropped from the Google copy; 0 keeps everything. Recurring events are always kept.',
+				'Destination Calendar ID' => 'Which Google Calendar receives everything — the long <code>…@group.calendar.google.com</code> ID from that calendar\'s "Integrate calendar" settings. All sources merge into this one calendar.',
+				'Sync Interval'           => 'How often the automatic sync runs. Hourly is plenty for a club calendar; more frequent just burns API quota.',
+				'Sync Now'                => 'Runs a full sync immediately (add/update/delete to match the sources) — use after adding a source or fixing an event. Results appear in the Last Run panel.',
+				'Last Run'                => 'What the most recent sync did: per-source counts of inserted/updated/deleted events plus any errors. First place to look when something seems out of date.',
+			),
+			'notes'  => 'Deleting a source here does NOT remove its events from Google — the next sync (with the source absent) prunes them. This module syncs <em>outward</em> to Google; the events on the website itself come from the GASF-Events plugin (Events &rarr; Feeds).',
+		) );
+	}
+	?>
 
 	<form method="post">
 		<?php wp_nonce_field( 'gasf_calsync_action' ); ?>

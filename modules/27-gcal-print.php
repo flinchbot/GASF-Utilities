@@ -292,8 +292,26 @@ if ( ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_en
 		$cal    = ( function_exists( 'gasf_calsync_get_settings' ) ? ( gasf_calsync_get_settings()['calendar_id'] ?? '' ) : '' );
 		?>
 		<h2>Internal Calendar (print)</h2>
-		<p>A printable month grid of <strong>every</strong> event on the Google Calendar
-			<code><?php echo esc_html( $cal ?: '(not configured)' ); ?></code> — including events staff add by hand in Google that never appear on the public site. This is the internal counterpart to the public print at <code>/events/print/</code>.</p>
+		<?php
+		if ( function_exists( 'gasf_utilities_doc_panel' ) ) {
+			gasf_utilities_doc_panel( array(
+				'what'   => 'A printable one-sheet month grid of <strong>every</strong> event on the internal Google Calendar — including events staff add by hand in Google that never appear on the public website (board meetings, hall holds, private rentals). Meant for the bulletin board and the office wall. It\'s the internal counterpart to the public print view at <code>/events/print/</code>.',
+				'needs'  => array(
+					'The <strong>Calendar Sync</strong> tab configured (this reads the same Google Calendar via the same service account).',
+					'The secret link below — the page is public-but-unguessable, so no WordPress login is needed to open or print it.',
+				),
+				'fields' => array(
+					'Open internal calendar' => 'Opens the current month\'s grid in a new tab, ready to print.',
+					'This month'             => 'A link pinned to the specific month shown — use when you need to print/share a particular month.',
+					'Always current month'   => 'The evergreen link — it always renders whatever month it is when opened. This is the one to bookmark or pin in the office.',
+					'Fallback link'          => 'Same page via query parameters instead of a pretty URL — only needed if permalinks ever misbehave.',
+					'Regenerate secret link' => 'Invalidates ALL existing links and issues a new secret. Use if a link leaks beyond staff (it grants view access to private hall events, so treat it like a key). Everyone with the old bookmark will need the new one.',
+				),
+				'notes'  => 'Add <code>&amp;auto=1</code> to any link to pop the browser print dialog automatically on open — handy for a "print this every month" routine.',
+			) );
+		}
+		?>
+		<p>Reads Google Calendar <code><?php echo esc_html( $cal ?: '(not configured)' ); ?></code>.</p>
 		<p><a href="<?php echo esc_url( $curr ); ?>" target="_blank" rel="noopener" class="button button-primary">Open internal calendar (current month) &#8599;</a></p>
 
 		<h3 class="title">Secret link</h3>

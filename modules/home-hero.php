@@ -309,7 +309,27 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		$tz        = wp_timezone_string();
 		?>
 			<h2>Home Page Hero</h2>
-			<p>Schedule the large image at the top of the home page. Choose an image, optionally make it clickable, add a caption and a button, and set when it goes live. At its scheduled time it automatically replaces whatever is showing.</p>
+			<?php
+			if ( function_exists( 'gasf_utilities_doc_panel' ) ) {
+				gasf_utilities_doc_panel( array(
+					'what'   => 'Schedules the big banner image at the top of the home page (rendered wherever the <code>[gas_hero]</code> shortcode sits). Heroes are a queue: each entry has a go-live time, and the newest entry whose time has passed is the one shown — so scheduling a future hero automatically replaces the current one at that moment, no midnight edits needed.',
+					'needs'  => array(
+						'The <code>[gas_hero]</code> shortcode on the home page (already in place).',
+						'An image in the Media Library for each hero.',
+					),
+					'fields' => array(
+						'Quick-create tiles'      => 'One tile per upcoming calendar event. Clicking a tile pre-fills the whole form from that event (cover image, link, and a go-live time 72 hours before it starts) — you just review and press Schedule. The "next N days" box only controls how far ahead the tiles look.',
+						'Image'                   => 'The banner itself, picked from the Media Library. Required — a hero is fundamentally an image. Landscape images around 1200px wide look best.',
+						'Image link (optional)'   => 'A URL that makes the entire image clickable — usually the event page or ticket link. Leave blank for a non-clickable banner.',
+						'Caption (optional)'      => 'Short text shown under the image (basic HTML/links allowed). Use it for a date/tagline the image itself doesn\'t carry.',
+						'Button label + link'     => 'Adds a call-to-action button below the caption (e.g. "Get Tickets"). The button link can differ from the image link. Both blank = no button.',
+						'Go live on'              => 'When this hero takes over the home page, in site time. Set now/past to show immediately. Nothing needs to "expire" — the next scheduled hero simply replaces it.',
+						'Advanced: display width' => 'Max rendered width in px, centered (default 450). Set 0 to span the full content width.',
+					),
+					'notes'  => 'Recurring events (Euchre Night, Krampus Meetup…) don\'t need manual entries — see the <strong>Recurring Heroes</strong> tab, which auto-shows a hero before each occurrence. A manual hero scheduled here always outranks a recurring one.',
+				) );
+			}
+			?>
 
 			<?php
 			$gasf_hero_days = (int) get_option( 'gasf_hero_lookahead_days', 14 );

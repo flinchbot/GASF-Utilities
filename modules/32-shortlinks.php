@@ -97,7 +97,25 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$here  = untrailingslashit( home_url() );
 		?>
 		<h2>Short Links</h2>
-		<p>Branded short URLs you create by hand — no auto-generated per-page links. Every short link works on <strong>all</strong> your domains (they all funnel to this site), so pick whichever domain you like when you copy — <code>gtbay.club</code> is the shortest to share.</p>
+		<?php
+		if ( function_exists( 'gasf_utilities_doc_panel' ) ) {
+			gasf_utilities_doc_panel( array(
+				'what'   => 'Branded short URLs for flyers, QR codes, and social posts — <code>germantampabay.com/join</code>, <code>gtbay.club/75th</code>, etc. Created by hand only (no auto-generated per-page links, unlike the old URL Shortify plugin). Each link counts its clicks. Because all your domains funnel to this one site, every short link automatically works on every domain.',
+				'needs'  => array(
+					'Nothing external. Extra domains (like <code>gtbay.club</code>) just need their DNS pointed/301\'d at this site — already true for all three.',
+				),
+				'fields' => array(
+					'Base domain + slug' => 'The short URL. The domain dropdown is <em>display-only</em> (it controls which domain the copy button gives you — pick the shortest for print); the <strong>slug</strong> is the part after the slash, e.g. <code>join</code>. Case-insensitive. Keep it short and human: it will be read off flyers and spoken aloud.',
+					'Destination URL'    => 'Where the visitor actually lands — any page on this site or an external URL (membership form, ticket page…). This is the only thing to change when a campaign moves.',
+					'Redirect type'      => '<strong>307 Temporary (recommended)</strong> keeps browsers/Google re-checking, so you can re-point the slug later (e.g. /oktoberfest to each year\'s page). <strong>301 Permanent</strong> gets cached hard by browsers — use only for slugs that will never change destination.',
+					'Clicks'             => 'Lifetime click count per link — a rough gauge of which flyers/QR codes actually get used.',
+					'Copy buttons'       => 'One per base domain — copies the full short URL for that domain to your clipboard.',
+					'Base domains list'  => 'The domains offered on the copy buttons. Add one here after pointing a new domain at the site; removing one never breaks existing links (they work on every domain regardless).',
+				),
+				'notes'  => 'Short links are for <em>outbound sharing</em>. For fixing old/broken URLs coming <em>into</em> the site, use the <strong>Redirects</strong> tab instead.',
+			) );
+		}
+		?>
 
 		<h3 class="title">Add / edit a short link</h3>
 		<form method="post"><?php wp_nonce_field( 'gasf_sl' ); ?>

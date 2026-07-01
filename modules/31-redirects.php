@@ -110,7 +110,24 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		uasort( $log, function ( $a, $b ) { return (int) ( $b['last'] ?? 0 ) <=> (int) ( $a['last'] ?? 0 ); } );
 		?>
 		<h2>Redirects</h2>
-		<p>Send old or broken URLs to the right place. (WordPress already auto-redirects when you rename a page slug — this covers deleted pages, old links, and typos.)</p>
+		<?php
+		if ( function_exists( 'gasf_utilities_doc_panel' ) ) {
+			gasf_utilities_doc_panel( array(
+				'what'   => 'Sends old or broken incoming URLs to the right place, and logs every 404 (page-not-found) visitors and search engines hit so you can spot and fix broken links. WordPress already auto-redirects when you rename a page\'s slug — this tab covers everything else: deleted pages, links from old flyers/emails, typos, and retired plugins\' URLs.',
+				'needs'  => array(
+					'Nothing external — it runs on every page request automatically.',
+				),
+				'fields' => array(
+					'From (path on this site)' => 'The incoming URL path to catch, starting with <code>/</code> — e.g. <code>/biergarten</code>. Exact-match on the path (query strings ignored).',
+					'To (path or full URL)'    => 'Where to send the visitor: another path on this site (<code>/the-biergarten/</code>) or a full external URL. Leave the destination out only for 410s.',
+					'Type'                     => '<strong>301 Permanent</strong> — the page moved for good; passes SEO value, browsers cache it (the usual choice). <strong>302 Temporary</strong> — short-term detour you\'ll undo. <strong>410 Gone</strong> — the page is intentionally dead with no replacement; tells Google to drop it from the index faster than a 404.',
+					'Hits'                     => 'How many times each redirect has fired — proof of which old URLs are still circulating out there.',
+					'404 log'                  => 'Every broken URL hit recently, with count, last-seen, and referrer (where the bad link lives). Click <strong>→ Redirect</strong> on a row to pre-fill the form and fix it in one step; ✕ dismisses noise (bot scans for wp-login variants etc. are normal and ignorable).',
+				),
+				'notes'  => 'This is for <em>incoming</em> broken URLs. For creating branded outbound links (<code>/join</code>, <code>/75th</code>) use the <strong>Short Links</strong> tab.',
+			) );
+		}
+		?>
 
 		<h3 class="title">Add a redirect</h3>
 		<form method="post"><?php wp_nonce_field( 'gasf_redir' ); ?>

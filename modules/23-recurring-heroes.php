@@ -245,7 +245,27 @@ if ( function_exists( 'gasf_mec_enabled' ) && gasf_mec_enabled( 'gasf_mec_enable
 		$tz     = wp_timezone_string();
 		?>
 		<h2>Recurring Heroes</h2>
-		<p>Define a home-page hero for a repeating event <strong>once</strong>. It becomes the active hero automatically a couple of days before the next matching event on the calendar, and disappears after the event ends. It only shows if that event is actually on the calendar &mdash; skip a month and nothing is forced onto the page. A hand-scheduled hero (Heroes tab) for the same dates takes precedence.</p>
+		<?php
+		if ( function_exists( 'gasf_utilities_doc_panel' ) ) {
+			gasf_utilities_doc_panel( array(
+				'what'   => 'Set-and-forget home-page heroes for repeating events (Euchre Night, Krampus Meetup, Biergarten…). Define one entry per event name and the hero automatically goes live a few days before each occurrence on the events calendar and disappears when the event ends. If the event isn\'t on the calendar that month, nothing shows — the hero can never advertise something that isn\'t happening.',
+				'needs'  => array(
+					'The event on the GASF events calendar with the <em>exact same title</em> each time (that\'s how occurrences are matched — the calendar has no series IDs).',
+					'The <code>[gas_hero]</code> shortcode on the home page (shared with the Heroes tab).',
+				),
+				'fields' => array(
+					'Event name'                => 'Which calendar events trigger this hero. Pick from the dropdown (distinct upcoming titles) or type an exact title if it isn\'t listed yet. Matching is exact-title, so "Euchre Night" won\'t match "Euchre Night Special".',
+					'Image'                     => 'Optional. Blank = use the matched event\'s cover image, which keeps the hero fresh automatically. If the event has no cover either, no hero shows (by design — better nothing than a stale image).',
+					'Image link (optional)'     => 'Where a click on the image goes. Blank = the matched event\'s own page, which is almost always what you want.',
+					'Caption / Button'          => 'Same as the Heroes tab: caption text under the image, plus an optional call-to-action button with its own link.',
+					'Show how many days before' => 'The lead time. The hero activates this many days before the event starts and retires when the event ends. 2–3 days is typical; longer for big festivals.',
+					'Enabled'                   => 'Untick to pause this recurring hero without deleting its configuration.',
+					'Advanced: display width'   => 'Max rendered width in px, centered (default 450). 0 = full content width.',
+				),
+				'notes'  => 'Precedence: a hand-scheduled hero on the <strong>Heroes</strong> tab always beats a recurring hero for the same dates — use that for one-off overrides.',
+			) );
+		}
+		?>
 
 		<h3 class="title">Add / edit a recurring hero</h3>
 		<form method="post">

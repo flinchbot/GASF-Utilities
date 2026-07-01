@@ -91,31 +91,44 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 
 	function gasf_reviews_fetch_tripadvisor( $key, $loc ) {
 		if ( ! $key || ! $loc ) { return array( array(), 'not configured' ); }
-		$url = 'https://api.content.tripadvisor.com/api/v1/location/' . rawurlencode( $loc ) . '/reviews?language=en&key=' . rawurlencode( $key );
+		// Terra Content API (the legacy api.content.tripadvisor.com host is sunset Aug 2026).
+		$url = 'https://terra.tripadvisor.com/api/locations/' . rawurlencode( $loc ) . '/reviews?language=en';
 		$r = wp_remote_get( $url, array(
 			'timeout' => 20,
-			'headers' => array( 'accept' => 'application/json', 'Referer' => home_url( '/' ) ),
+			'headers' => array( 'accept' => 'application/json', 'X-API-Key' => $key ),
 		) );
 		if ( is_wp_error( $r ) ) { return array( array(), $r->get_error_message() ); }
 		$hc = (int) wp_remote_retrieve_response_code( $r );
 		$b  = json_decode( wp_remote_retrieve_body( $r ), true );
-		if ( isset( $b['error'] ) ) { return array( array(), 'TripAdvisor: ' . ( $b['error']['message'] ?? '?' ) ); }
-		if ( $hc < 200 || $hc >= 300 ) { return array( array(), 'TripAdvisor: HTTP ' . $hc ); }
+		if ( $hc < 200 || $hc >= 300 ) { return array( array(), 'TripAdvisor: HTTP ' . $hc . ' ' . substr( wp_remote_retrieve_body( $r ), 0, 100 ) ); }
 		$out = array();
 		foreach ( (array) ( $b['data'] ?? array() ) as $rv ) {
-			$txt = trim( ( $rv['title'] ?? '' ) . ( ! empty( $rv['title'] ) ? ' — ' : '' ) . ( $rv['text'] ?? '' ) );
+			$title = gasf_reviews_ta_ml( $rv['title'] ?? null );
+			$body  = gasf_reviews_ta_ml( $rv['text'] ?? null );
+			$txt   = trim( $title . ( ( '' !== $title && '' !== $body ) ? ' — ' : '' ) . $body );
+			$ts    = strtotime( (string) ( $rv['publish_ts'] ?? '' ) ) ?: 0;
 			$out[] = array(
 				'source' => 'tripadvisor',
 				'author' => $rv['user']['username'] ?? 'TripAdvisor member',
-				'avatar' => $rv['user']['avatar']['small']['url'] ?? '',
+				'avatar' => $rv['user']['avatar_url']['url'] ?? '',
 				'rating' => (float) ( $rv['rating'] ?? 0 ),
 				'text'   => $txt,
-				'time'   => strtotime( (string) ( $rv['published_date'] ?? '' ) ) ?: 0,
-				'date'   => isset( $rv['published_date'] ) ? date_i18n( 'M Y', strtotime( $rv['published_date'] ) ) : '',
+				'time'   => $ts,
+				'date'   => $ts ? date_i18n( 'M Y', $ts ) : '',
 				'url'    => $rv['url'] ?? '',
 			);
 		}
 		return array( $out, null );
+	}
+
+	/** Terra returns title/text as [{language,value,primary}]; pull the primary (or first) value. */
+	function gasf_reviews_ta_ml( $field ) {
+		if ( is_string( $field ) ) { return $field; }
+		if ( is_array( $field ) ) {
+			foreach ( $field as $x ) { if ( ! empty( $x['primary'] ) && isset( $x['value'] ) ) { return (string) $x['value']; } }
+			if ( isset( $field[0]['value'] ) ) { return (string) $field[0]['value']; }
+		}
+		return '';
 	}
 
 	/* ============================ refresh + cache ============================ */
@@ -330,7 +343,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				$srcs = array(
 					'google'      => array( 'Google', 'place', 'Place ID', 'API key with Places API enabled + billing' ),
 					'yelp'        => array( 'Yelp', 'biz', 'Business ID or alias', 'Yelp Fusion API key' ),
-					'tripadvisor' => array( 'TripAdvisor', 'loc', 'Location ID', 'Content API key (key must allow this site as Referer)' ),
+					'tripadvisor' => array( 'TripAdvisor', 'loc', 'Location ID', 'Terra Content API key (X-API-Key) — from the Terra dashboard' ),
 				);
 				foreach ( $srcs as $s => $meta ) : list( $label, $idf, $idlabel, $hint ) = $meta; ?>
 					<tr><th scope="row"><?php echo esc_html( $label ); ?></th><td>

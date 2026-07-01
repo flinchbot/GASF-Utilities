@@ -125,6 +125,29 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		return file_exists( $path ) ? $url : $remote_url;
 	}
 
+	/**
+	 * Prune sideloaded images no longer referenced by the current cache. IG CDN
+	 * URLs carry rotating signatures, so the same photo re-downloads under a new
+	 * md5 name on each refresh — without this the uploads/gasf-ig dir grows
+	 * forever. A file is kept if its name appears anywhere in the current cache
+	 * blob, or if it's newer than the grace window (a file just written but not
+	 * yet in the saved cache). Returns the number deleted.
+	 */
+	function gasf_ig_prune_cache( $grace_days = 2 ) {
+		$c = gasf_ig_cache_dir();
+		if ( ! is_dir( $c['dir'] ) ) { return 0; }
+		$blob   = (string) wp_json_encode( (array) get_option( 'gasf_ig_media_cache', array() ) );
+		$cutoff = time() - max( 1, (int) $grace_days ) * DAY_IN_SECONDS;
+		$removed = 0;
+		foreach ( (array) glob( $c['dir'] . '/*.jpg' ) as $f ) {
+			$base = basename( $f );
+			if ( '' !== $base && false !== strpos( $blob, $base ) ) { continue; } // still referenced
+			if ( (int) @filemtime( $f ) > $cutoff ) { continue; }                  // too new — grace window
+			if ( @unlink( $f ) ) { $removed++; }
+		}
+		return $removed;
+	}
+
 	/* ==================== fetch + normalize + cache ==================== */
 
 	function gasf_ig_settings() {
@@ -168,7 +191,10 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$cache = (array) get_option( 'gasf_ig_media_cache', array() );
 		$fresh = isset( $cache['ts'] ) && ( time() - (int) $cache['ts'] ) < (int) $s['ttl'];
 		if ( ! $force && $fresh && ! empty( $cache['items'] ) ) { return $cache['items']; }
-		if ( ! $force && get_transient( 'gasf_ig_fetching' ) && ! empty( $cache['items'] ) ) { return $cache['items']; }
+		// If another request is already fetching, serve whatever we have — even an
+		// EMPTY pool. Without dropping the "&& ! empty" guard, a cold cache let
+		// every concurrent visitor run the 45s Graph pagination loop at once.
+		if ( ! $force && get_transient( 'gasf_ig_fetching' ) ) { return $cache['items'] ?? array(); }
 		set_transient( 'gasf_ig_fetching', 1, 180 );
 
 		$target = max( 1, min( 300, max( (int) $s['count'], (int) $s['max'] ) ) );
@@ -219,7 +245,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		}
 	} );
 	add_action( 'gasf_ig_cron', function () {
-		if ( gasf_ig_token() ) { gasf_ig_refresh_token( false ); gasf_ig_get_media( true ); }
+		if ( gasf_ig_token() ) { gasf_ig_refresh_token( false ); gasf_ig_get_media( true ); gasf_ig_prune_cache(); }
 	} );
 
 	/* ============================ shortcode ============================ */

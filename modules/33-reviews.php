@@ -134,7 +134,10 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$cache = (array) get_option( 'gasf_reviews_cache', array() );
 		$fresh = isset( $cache['ts'] ) && ( time() - (int) $cache['ts'] ) < (int) $c['ttl'];
 		if ( $fresh && isset( $cache['items'] ) ) { return $cache['items']; }
-		if ( get_transient( 'gasf_reviews_fetching' ) && ! empty( $cache['items'] ) ) { return $cache['items']; }
+		// If another request is already fetching (up to ~40s of Google+TripAdvisor
+		// calls), serve what we have — even empty — instead of every cold-cache
+		// visitor hitting both APIs synchronously and blocking page render.
+		if ( get_transient( 'gasf_reviews_fetching' ) ) { return $cache['items'] ?? array(); }
 		set_transient( 'gasf_reviews_fetching', 1, 120 );
 		list( $items ) = gasf_reviews_refresh();
 		delete_transient( 'gasf_reviews_fetching' );

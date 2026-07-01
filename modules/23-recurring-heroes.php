@@ -146,6 +146,31 @@ if ( function_exists( 'gasf_mec_enabled' ) && gasf_mec_enabled( 'gasf_mec_enable
 		return $best;
 	}
 
+	/**
+	 * The single next recurring hero that will fire AFTER $anchor_ts — i.e. the
+	 * soonest occurrence, across all enabled defs, whose activation (start - lead)
+	 * is strictly later than the anchor. Used by the Heroes tab to show where the
+	 * recurring schedule picks up beyond the furthest-out manual hero. Returns a
+	 * virtual entry (with '_title') or null.
+	 */
+	function gasf_hero_recurring_next_after( $anchor_ts ) {
+		$anchor_ts = (int) $anchor_ts;
+		$best      = null;
+		foreach ( gasf_hero_recurring_get() as $def ) {
+			if ( empty( $def['enabled'] ) || empty( $def['title'] ) ) { continue; }
+			$lead = max( 0, (int) ( $def['lead_days'] ?? GASF_HERO_DEFAULT_LEAD_DAYS ) ) * DAY_IN_SECONDS;
+			// start_ts >= anchor + lead + 1  ->  activate_at (start - lead) > anchor.
+			$ev = gasf_hero_recurring_next_event( $def['title'], $anchor_ts + $lead + 1 );
+			if ( ! $ev ) { continue; }
+			$def['_lead_secs'] = $lead;
+			$entry = gasf_hero_recurring_entry( $def, $ev );
+			if ( ! $entry ) { continue; }
+			$entry['_title'] = (string) $def['title'];
+			if ( $best === null || $entry['activate_at'] < $best['activate_at'] ) { $best = $entry; }
+		}
+		return $best;
+	}
+
 	/* ===================== front-end override (the hook) ================== */
 	/* home-hero.php applies this filter to whatever gasf_hero_active() returned. */
 	add_filter( 'gasf_hero_active_entry', function ( $manual ) {

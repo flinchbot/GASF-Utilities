@@ -174,7 +174,38 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			);
 			$out .= '<script type="application/ld+json">' . wp_json_encode( $site, JSON_UNESCAPED_SLASHES ) . "</script>\n";
 		}
+		// Breadcrumb schema (skip the front page).
+		if ( ! is_front_page() ) {
+			$bc = gasf_seo_breadcrumbs();
+			if ( '' !== $bc ) { $out .= '<script type="application/ld+json">' . $bc . "</script>\n"; }
+		}
 		echo $out; // phpcs:ignore -- all values escaped above
+	}
+
+	function gasf_seo_breadcrumbs() {
+		$crumbs = array( array( 'name' => 'Home', 'url' => home_url( '/' ) ) );
+		if ( is_singular() ) {
+			$id = get_queried_object_id();
+			if ( is_page() ) {
+				foreach ( array_reverse( get_post_ancestors( $id ) ) as $anc ) {
+					$crumbs[] = array( 'name' => wp_strip_all_tags( get_the_title( $anc ) ), 'url' => get_permalink( $anc ) );
+				}
+			}
+			$crumbs[] = array( 'name' => wp_strip_all_tags( get_the_title( $id ) ), 'url' => get_permalink( $id ) );
+		} elseif ( is_category() || is_tag() || is_tax() ) {
+			$l = get_term_link( get_queried_object() );
+			$crumbs[] = array( 'name' => single_term_title( '', false ), 'url' => is_wp_error( $l ) ? home_url( '/' ) : $l );
+		} elseif ( is_post_type_archive() ) {
+			$crumbs[] = array( 'name' => post_type_archive_title( '', false ), 'url' => get_post_type_archive_link( get_query_var( 'post_type' ) ) ?: home_url( '/' ) );
+		} else {
+			return '';
+		}
+		if ( count( $crumbs ) < 2 ) { return ''; }
+		$items = array();
+		foreach ( $crumbs as $i => $c ) {
+			$items[] = array( '@type' => 'ListItem', 'position' => $i + 1, 'name' => $c['name'], 'item' => $c['url'] );
+		}
+		return wp_json_encode( array( '@context' => 'https://schema.org', '@type' => 'BreadcrumbList', 'itemListElement' => $items ), JSON_UNESCAPED_SLASHES );
 	}
 
 	function gasf_seo_desc() {
@@ -265,6 +296,57 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		echo '<p><label><strong>Meta description</strong><br><textarea name="gasf_seo_desc" rows="3" class="widefat" placeholder="Falls back to the excerpt">' . esc_textarea( $d ) . '</textarea></label><span class="description">~155 characters is ideal.</span></p>';
 		echo '<p><label><input type="checkbox" name="gasf_seo_noindex" value="1" ' . checked( $n, true, false ) . '> Ask search engines <strong>not</strong> to index this page</label></p>';
 		echo '<p class="description">Supports <code>%%title%%</code>, <code>%%sitename%%</code>, <code>%%sep%%</code>, <code>%%excerpt%%</code>.</p>';
+		$kw = get_post_meta( $post->ID, '_gasf_seo_keyphrases', true );
+		echo '<hr style="margin:14px 0"><p><label><strong>Focus keyphrase(s)</strong> <span class="description">— comma-separated; terms you want this page to rank for</span><br><input type="text" id="gasf_seo_kw" name="gasf_seo_keyphrases" value="' . esc_attr( $kw ) . '" class="widefat" placeholder="e.g. german festival tampa, oktoberfest pinellas park"></label></p>';
+		echo '<div id="gasf_seo_analysis" style="font-size:13px;line-height:1.8"></div>';
+		gasf_seo_box_js();
+	}
+
+	function gasf_seo_box_js() {
+		?>
+		<script>
+		(function(){
+			if ( window.gasfSeoBoxInit ) { return; } window.gasfSeoBoxInit = 1;
+			var $ = window.jQuery; if ( ! $ ) { return; }
+			function norm(s){ return (s||'').toString().toLowerCase(); }
+			function content(fmt){
+				try { if ( window.tinymce ) { var e = tinymce.get('content'); if ( e && ! e.isHidden() ) { return e.getContent({format: fmt||'text'}); } } } catch(x){}
+				var ta = document.getElementById('content'); return ta ? ta.value : '';
+			}
+			function slug(){ var el=document.getElementById('editable-post-name'); if(el) return el.textContent; var t=document.getElementById('title'); return t? t.value : ''; }
+			function esc(s){ return $('<div>').text(s).html(); }
+			function row(ok,txt){ return '<div style="color:'+(ok?'#1a7f37':'#b3122b')+'">'+(ok?'✓':'✗')+' '+txt+'</div>'; }
+			function analyze(){
+				var box=document.getElementById('gasf_seo_analysis'); if(!box) return;
+				var kws=((document.getElementById('gasf_seo_kw')||{}).value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+				var title=norm(($('[name=gasf_seo_title]').val()||'')+' '+($('#title').val()||''));
+				var desc=norm($('[name=gasf_seo_desc]').val()||'');
+				var text=norm(content('text'));
+				var html=norm(content('html'));
+				var sl=norm(slug());
+				var words=(text.match(/\S+/g)||[]).length;
+				var out=row(words>=300,'Content length: '+words+' words'+(words>=300?'':' (aim for 300+)'));
+				if(!kws.length){ box.innerHTML=out+'<div class="description" style="margin-top:6px">Add a focus keyphrase to see keyphrase checks.</div>'; return; }
+				var heads=html.match(/<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>/g)||[];
+				kws.forEach(function(kw,i){
+					var k=norm(kw);
+					var inHead=false; heads.forEach(function(h){ if(norm(h.replace(/<[^>]+>/g,'')).indexOf(k)>-1) inHead=true; });
+					out+='<div style="margin-top:8px"><strong>'+(i===0?'Primary: ':'')+esc(kw)+'</strong>';
+					out+=row(title.indexOf(k)>-1,'In the title');
+					out+=row(desc.indexOf(k)>-1,'In the meta description');
+					out+=row(text.indexOf(k)>-1,'In the content');
+					out+=row(inHead,'In a subheading (H2–H6)');
+					out+=row(sl.indexOf(k.replace(/\s+/g,'-'))>-1||sl.indexOf(k.replace(/\s+/g,''))>-1,'In the URL slug');
+					out+='</div>';
+				});
+				box.innerHTML=out;
+			}
+			$(document).on('input','#gasf_seo_kw, [name=gasf_seo_title], [name=gasf_seo_desc], #title', analyze);
+			setInterval(analyze, 2000);
+			$(analyze);
+		})();
+		</script>
+		<?php
 	}
 	add_action( 'save_post', function ( $post_id ) {
 		if ( ! isset( $_POST['gasf_seo_nonce'] ) || ! wp_verify_nonce( wp_unslash( $_POST['gasf_seo_nonce'] ), 'gasf_seo_save' ) ) { return; }
@@ -276,6 +358,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		};
 		$set( '_gasf_seo_title', sanitize_text_field( wp_unslash( $_POST['gasf_seo_title'] ?? '' ) ) );
 		$set( '_gasf_seo_desc', sanitize_textarea_field( wp_unslash( $_POST['gasf_seo_desc'] ?? '' ) ) );
+		$set( '_gasf_seo_keyphrases', sanitize_text_field( wp_unslash( $_POST['gasf_seo_keyphrases'] ?? '' ) ) );
 		if ( ! empty( $_POST['gasf_seo_noindex'] ) ) { update_post_meta( $post_id, '_gasf_seo_noindex', 1 ); } else { delete_post_meta( $post_id, '_gasf_seo_noindex' ); }
 	} );
 

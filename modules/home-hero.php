@@ -80,9 +80,8 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		) );
 		if ( ! $img ) { return ''; }
 
-		// Hero is above the fold: force a single eager load + high priority (no duplicate loading attr).
-		$img = preg_replace( '/\sloading="[^"]*"/', '', $img );
-		$img = preg_replace( '/<img /', '<img loading="eager" fetchpriority="high" ', $img, 1 );
+		// Hero is the LCP element: its eager/high-priority loading + right-sized
+		// `sizes` + <head> preload are owned by modules/37-perf.php (A1/A2).
 
 		// Whole image clickable when an image link is set (independent of the button link).
 		$image_url = isset( $e['image_url'] ) ? trim( $e['image_url'] ) : '';

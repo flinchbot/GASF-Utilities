@@ -52,6 +52,18 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		wp_enqueue_style( 'gasf-local-fonts', trailingslashit( $up['baseurl'] ) . 'gasf-fonts/gasf-fonts.css', array(), null );
 	}, 100 );
 
+	/* Germania One on H2 headings — self-hosted replacement for the (removed) Olympus
+	 * "Google Fonts" plugin, which applied this from gstatic. Same @font-face + exact
+	 * selectors, printed late in <head> like the plugin did, so headings look identical. */
+	add_action( 'wp_head', function () {
+		$up   = wp_upload_dir();
+		$file = trailingslashit( $up['basedir'] ) . 'gasf-fonts/germania-one-400-normal-latin.woff2';
+		if ( ! file_exists( $file ) ) { return; }
+		$url = trailingslashit( $up['baseurl'] ) . 'gasf-fonts/germania-one-400-normal-latin.woff2';
+		echo "<style id=\"gasf-germania\">@font-face{font-family:'Germania One';font-style:normal;font-weight:400;font-display:swap;src:url(" . esc_url( $url ) . ") format('woff2');}"
+			. ".entry-content h2,.post-content h2,.page-content h2,#content h2,.type-post h2,.type-page h2,.elementor h2{font-family:\"Germania One\";}</style>\n";
+	}, 99 );
+
 	/* Fonts are local now — drop the dns-prefetch/preconnect hints to Google's font hosts. */
 	add_filter( 'wp_resource_hints', function ( $urls, $relation ) {
 		if ( ! in_array( $relation, array( 'dns-prefetch', 'preconnect' ), true ) ) { return $urls; }

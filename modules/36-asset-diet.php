@@ -51,4 +51,13 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		wp_deregister_style( 'hootdu-googlefont' );
 		wp_enqueue_style( 'gasf-local-fonts', trailingslashit( $up['baseurl'] ) . 'gasf-fonts/gasf-fonts.css', array(), null );
 	}, 100 );
+
+	/* Fonts are local now — drop the dns-prefetch/preconnect hints to Google's font hosts. */
+	add_filter( 'wp_resource_hints', function ( $urls, $relation ) {
+		if ( ! in_array( $relation, array( 'dns-prefetch', 'preconnect' ), true ) ) { return $urls; }
+		return array_values( array_filter( $urls, function ( $u ) {
+			$href = is_array( $u ) ? ( $u['href'] ?? '' ) : (string) $u;
+			return false === strpos( $href, 'fonts.googleapis.com' ) && false === strpos( $href, 'fonts.gstatic.com' );
+		} ) );
+	}, 20, 2 );
 }

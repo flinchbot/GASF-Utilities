@@ -2,19 +2,19 @@
 /**
  * Native Instagram Feed — modules/28-instagram.php
  *
- * A theme-native Instagram feed for @germanamericansocietytampabay, built to
- * replace Smash Balloon's display with full styling control. Pulls the
- * account's own media (posts, carousels, reels) from the Instagram Graph API
- * (graph.instagram.com, "Instagram API with Instagram Login"), sideloads
- * images locally for speed, caches the result, and renders grid / masonry /
- * carousel layouts with a built-in lightbox.
+ * A theme-native Instagram feed for a site's own Instagram account, with full
+ * styling control. Pulls the account's own media (posts, carousels, reels)
+ * from the Instagram Graph API (graph.instagram.com, "Instagram API with
+ * Instagram Login"), sideloads images locally for speed, caches the result,
+ * and renders grid / masonry / carousel layouts with a built-in lightbox.
  *
- * Token: we own it. gasf_ig_import_from_sb() lifts the existing long-lived
- * token from Smash Balloon once; gasf_ig_cron refreshes it (ig_refresh_token)
- * well before the 60-day expiry, so this keeps working even if SB is removed.
- * No Meta app or App Review needed — this uses only /me/media, which the
- * account's own token already permits. (Hashtag/tagged feeds are intentionally
- * out of scope: they require FB-Page Graph access + Meta App Review.)
+ * Token: we own it. A long-lived access token is entered once on the admin tab
+ * (gasf_ig_set_token() validates it against /me and stores it); gasf_ig_cron
+ * refreshes it (ig_refresh_token) well before the 60-day expiry, so it keeps
+ * working with no plugin dependency. No Meta app or App Review needed — this
+ * uses only /me/media, which the account's own token already permits.
+ * (Hashtag/tagged feeds are intentionally out of scope: they require FB-Page
+ * Graph access + Meta App Review.)
  *
  * Shortcode: [gasf_instagram layout="grid|masonry|carousel" count="12"
  *            columns="4" captions="0" gap="10" radius="8"]
@@ -33,38 +33,30 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 	function gasf_ig_token() { return (string) get_option( 'gasf_ig_token', '' ); }
 	function gasf_ig_meta()  { return (array) get_option( 'gasf_ig_meta', array() ); }
 
-	/** Lift the current long-lived token out of Smash Balloon (one-time bootstrap). */
-	function gasf_ig_import_from_sb() {
-		global $wpdb;
-		$t = $wpdb->prefix . 'sbi_sources';
-		if ( $wpdb->get_var( "SHOW TABLES LIKE '$t'" ) !== $t ) { return 'Smash Balloon source table not found.'; }
-		$row = $wpdb->get_row( "SELECT account_id, access_token, username, expires FROM $t LIMIT 1", ARRAY_A );
-		if ( ! $row || empty( $row['access_token'] ) ) { return 'No Smash Balloon source/token found.'; }
+	/**
+	 * Validate a manually-entered long-lived Instagram token against the Graph
+	 * API and store it, reading back the account name/type/expiry. Returns true
+	 * on success or an error string. This is the one-time connect step; the
+	 * hourly cron self-refreshes the token thereafter (no plugin dependency).
+	 */
+	function gasf_ig_set_token( $tok ) {
+		$tok = trim( (string) $tok );
+		if ( '' === $tok ) { return 'Paste an access token first.'; }
 
-		$tok = $row['access_token'];
-		$cls = null;
-		foreach ( array( 'SB_Instagram_Data_Encryption', '\\InstagramFeed\\SB_Instagram_Data_Encryption' ) as $c ) {
-			if ( class_exists( $c ) ) { $cls = $c; break; }
-		}
-		if ( ! $cls ) {
-			$f = WP_PLUGIN_DIR . '/instagram-feed/inc/class-sb-instagram-data-encryption.php';
-			if ( file_exists( $f ) ) { require_once $f; if ( class_exists( 'SB_Instagram_Data_Encryption' ) ) { $cls = 'SB_Instagram_Data_Encryption'; } }
-		}
-		if ( $cls ) { $enc = new $cls(); $dec = $enc->decrypt( $tok ); if ( $dec ) { $tok = $dec; } }
-
-		// Validate against the API before storing.
 		$me = gasf_ig_api( '/me', array( 'fields' => 'id,username,account_type,media_count' ), $tok );
 		if ( is_wp_error( $me ) ) { return 'Token did not validate: ' . $me->get_error_message(); }
 
 		update_option( 'gasf_ig_token', $tok, false );
-		update_option( 'gasf_ig_meta', array(
-			'user_id'    => $me['id'] ?? ( $row['account_id'] ?? '' ),
-			'username'   => $me['username'] ?? $row['username'] ?? '',
-			'type'       => $me['account_type'] ?? '',
-			'media_count'=> (int) ( $me['media_count'] ?? 0 ),
-			'expires'    => strtotime( (string) ( $row['expires'] ?? '' ) ) ?: ( time() + 50 * DAY_IN_SECONDS ),
-			'imported'   => time(),
-		), false );
+		$meta = gasf_ig_meta();
+		update_option( 'gasf_ig_meta', array_merge( $meta, array(
+			'user_id'     => $me['id'] ?? '',
+			'username'    => $me['username'] ?? '',
+			'type'        => $me['account_type'] ?? '',
+			'media_count' => (int) ( $me['media_count'] ?? 0 ),
+			// A long-lived token is ~60 days; the cron refreshes + corrects this.
+			'expires'     => time() + 60 * DAY_IN_SECONDS,
+			'set_at'      => time(),
+		) ), false );
 		return true;
 	}
 
@@ -465,9 +457,9 @@ document.addEventListener('click',function(e){
 
 		if ( isset( $_POST['gasf_ig_action'] ) && check_admin_referer( 'gasf_ig_admin' ) ) {
 			$act = sanitize_text_field( wp_unslash( $_POST['gasf_ig_action'] ) );
-			if ( $act === 'import' ) {
-				$r = gasf_ig_import_from_sb();
-				echo $r === true ? '<div class="notice notice-success is-dismissible"><p>Token imported from Smash Balloon and validated.</p></div>'
+			if ( $act === 'set_token' ) {
+				$r = gasf_ig_set_token( wp_unslash( $_POST['gasf_ig_token_input'] ?? '' ) );
+				echo $r === true ? '<div class="notice notice-success is-dismissible"><p>Token validated and saved — connected.</p></div>'
 					: '<div class="notice notice-error"><p>' . esc_html( $r ) . '</p></div>';
 			} elseif ( $act === 'refresh_token' ) {
 				$r = gasf_ig_refresh_token( true );
@@ -503,16 +495,16 @@ document.addEventListener('click',function(e){
 		<?php
 		if ( function_exists( 'gasf_utilities_doc_panel' ) ) {
 			gasf_utilities_doc_panel( array(
-				'what'   => 'The site\'s own Instagram feed — the <code>[gasf_instagram]</code> shortcode renders <strong>@' . esc_html( $meta['username'] ?? 'your account' ) . '</strong>\'s posts, carousels and reels in a grid/masonry/carousel with a lightbox, fully styled to the theme. It replaced Smash Balloon\'s display. Images are downloaded to this server (fast, no Instagram CDN dependency at view time) and the post list is cached; an hourly cron keeps everything fresh and auto-renews the access token before its 60-day expiry.',
+				'what'   => 'The site\'s own Instagram feed — the <code>[gasf_instagram]</code> shortcode renders <strong>@' . esc_html( $meta['username'] ?? 'your account' ) . '</strong>\'s posts, carousels and reels in a grid/masonry/carousel with a lightbox, fully styled to the theme — no third-party Instagram plugin required. Images are downloaded to this server (fast, no Instagram CDN dependency at view time) and the post list is cached; an hourly cron keeps everything fresh and auto-renews the access token before its 60-day expiry.',
 				'needs'  => array(
-					'A valid <strong>Instagram access token</strong> — imported once from Smash Balloon (which owns the Meta app used for login) and self-refreshed ever since. Keep Smash Balloon <em>installed</em> as the re-auth fallback if the token ever fully dies.',
+					'A valid long-lived <strong>Instagram access token</strong> for this site&rsquo;s account — pasted once into <em>Connect</em> below, then self-refreshed hourly. No Instagram-feed plugin needs to be installed.',
 					'The <code>[gasf_instagram]</code> shortcode on a page.',
 				),
 				'fields' => array(
 					'Connection status'      => 'Shows the connected account, token expiry, and cache age. Green = healthy; the hourly cron handles renewal, so you should never need the buttons below in normal life.',
+					'Connect / Access token' => 'Paste a long-lived Instagram access token to connect (or replace) the account. It&rsquo;s validated against the Instagram API before saving, and the username + expiry are read back automatically. One-time — the cron keeps it alive after that.',
 					'Refresh feed now'       => 'Re-pulls the latest posts immediately instead of waiting for the cache TTL — use right after posting something you want on the site now.',
 					'Refresh token'          => 'Manually renews the access token (normally automatic). Harmless to click.',
-					'Re-import token from SB'=> 'Recovery path: lifts a fresh token out of Smash Balloon after you re-authenticate there. Only needed if the token fully expires.',
 					'Layout'                 => 'Grid (uniform tiles), masonry (Pinterest-style variable heights), or carousel (horizontal scroller).',
 					'Posts per page'         => 'How many tiles show initially and how many each "Load more" adds.',
 					'Load more / up to N'    => 'Button, infinite scroll, or off — and the total cap visitors can page through. The cap also sets how many posts the cache pulls; 48–96 is the sweet spot.',
@@ -533,15 +525,24 @@ document.addEventListener('click',function(e){
 			<tr><td>Token expires</td><td><?php echo $exp ? esc_html( wp_date( 'M j, Y', $exp ) ) . ' (auto-refreshed by cron)' : '—'; ?></td></tr>
 			<tr><td>Cached posts</td><td><?php echo esc_html( count( $cache['items'] ?? array() ) ); ?><?php echo ! empty( $cache['ts'] ) ? ' · updated ' . esc_html( human_time_diff( (int) $cache['ts'] ) ) . ' ago' : ''; ?></td></tr>
 		</table>
+		<?php if ( $has ) : ?>
 		<form method="post" style="margin-top:10px">
 			<?php wp_nonce_field( 'gasf_ig_admin' ); ?>
-			<?php if ( ! $has ) : ?>
-				<button name="gasf_ig_action" value="import" class="button button-primary">Import token from Smash Balloon</button>
-			<?php else : ?>
-				<button name="gasf_ig_action" value="refresh_feed" class="button button-primary">Refresh feed now</button>
-				<button name="gasf_ig_action" value="refresh_token" class="button">Refresh token</button>
-				<button name="gasf_ig_action" value="import" class="button">Re-import token from SB</button>
-			<?php endif; ?>
+			<button name="gasf_ig_action" value="refresh_feed" class="button button-primary">Refresh feed now</button>
+			<button name="gasf_ig_action" value="refresh_token" class="button">Refresh token</button>
+		</form>
+		<?php endif; ?>
+
+		<h3 class="title"><?php echo $has ? 'Replace access token' : 'Connect — add your access token'; ?></h3>
+		<form method="post" style="margin-top:6px">
+			<?php wp_nonce_field( 'gasf_ig_admin' ); ?>
+			<p>
+				<input type="text" name="gasf_ig_token_input" value="" class="regular-text code" style="width:560px;max-width:100%" placeholder="IGAA… long-lived Instagram access token" autocomplete="off" spellcheck="false">
+				<button name="gasf_ig_action" value="set_token" class="button button-primary"><?php echo $has ? 'Replace token' : 'Connect'; ?></button>
+			</p>
+			<p class="description">
+				Paste a <strong>long-lived Instagram access token</strong> for this site&rsquo;s Instagram account. It&rsquo;s validated against the Instagram API before saving, and the account name + expiry are read back automatically; the hourly cron then self-refreshes it, so this is a one-time step. Get one from the Meta / Instagram developer tools (<em>Instagram API with Instagram Login</em> &rarr; generate a long-lived access token), or from an Instagram-feed plugin&rsquo;s settings if the site happens to have one. No plugin needs to stay installed.
+			</p>
 		</form>
 
 		<h3 class="title">Display defaults</h3>
@@ -578,7 +579,7 @@ document.addEventListener('click',function(e){
 		<h3 class="title">Use it</h3>
 		<p>Drop this shortcode on any page/widget (attributes override the defaults above):</p>
 		<p><code>[gasf_instagram layout="grid" count="12" columns="4"]</code></p>
-		<p class="description">Then, when you're happy, remove the Smash Balloon block from that page. Smash Balloon can stay installed as a fallback until you're ready to retire it.</p>
+		<p class="description">Attributes override the saved defaults per placement. If the site previously showed its feed via another Instagram plugin, swap in this shortcode and remove that block — nothing else needs to stay installed.</p>
 		<?php
 	}
 }

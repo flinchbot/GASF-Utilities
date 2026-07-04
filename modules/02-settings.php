@@ -76,19 +76,10 @@ function gasf_settings_registry() {
 			array( 'gate' => 'gasf_site_enable_perf', 'label' => 'Performance (LCP &amp; images)', 'desc' => 'Hero preload + right-sizing, image CDN preconnect — the mobile-LCP fixes.' ),
 			array( 'gate' => 'gasf_site_enable_deferjs', 'label' => 'Defer JavaScript', 'desc' => 'Part of the Performance module: adds <code>defer</code> to front-end scripts. Toggle off first if a slider/menu misbehaves.' ),
 		),
-		'Legacy — MEC importer era (dormant unless MEC is installed)' => array(
-			array( 'gate' => 'gasf_mec_enable_cron', 'label' => 'MEC importer cron fix', 'desc' => 'Registers the importer sync schedule once (Module A).' ),
-			array( 'gate' => 'gasf_mec_enable_defaults', 'label' => 'MEC FB import defaults', 'desc' => 'Forces page/GermanTampa on manual Facebook imports (Module B).' ),
-			array( 'gate' => 'gasf_mec_enable_window', 'label' => 'MEC manual-sync window filter', 'desc' => 'Strips out-of-window FB events from manual imports (Module C).' ),
-			array( 'gate' => 'gasf_mec_enable_recurrence', 'label' => 'MEC native recurrence', 'desc' => 'Converts recurring FB events into native MEC recurring events (Module D).' ),
-			array( 'gate' => 'gasf_mec_enable_sweep', 'label' => 'MEC duplicate sweep', 'desc' => 'Deterministic dedup after each importer sync (Module E).' ),
-			array( 'gate' => 'gasf_mec_sweep_dryrun', 'label' => 'Sweep DRY-RUN (safety)', 'desc' => 'ON = the sweep only logs candidates and deletes nothing. Turn off only to allow real deletion.' ),
-			array( 'gate' => 'gasf_mec_enable_single_template', 'label' => 'MEC single-event template', 'desc' => 'Branded single-event template + CSS for <code>mec-events</code> (Module G).' ),
-			array( 'gate' => 'gasf_mec_enable_fb_refresh', 'label' => 'MEC refresh from Facebook', 'desc' => 'Re-syncs upcoming FB-imported MEC events each cycle (Module H).' ),
-			array( 'gate' => 'gasf_mec_enable_feierabend', 'label' => 'MEC upcoming-dates shortcode', 'desc' => 'The <code>[mec_upcoming_dates]</code> generic MEC list.' ),
-			array( 'gate' => 'gasf_site_enable_us_branded', 'label' => 'URL Shortify branded display', 'desc' => 'Per-link gtbay.club branding for the retired URL Shortify plugin.' ),
-		),
 	);
+	// The MEC-importer-era gates (gasf_mec_enable_cron/defaults/window/recurrence/
+	// sweep/single_template/fb_refresh/feierabend, gasf_mec_sweep_dryrun,
+	// gasf_site_enable_us_branded) were removed with their modules in v1.3.0.
 }
 
 add_action( 'admin_menu', function () {
@@ -146,7 +137,6 @@ function gasf_settings_tab() {
 			'fields' => array(
 				'Utility toggles'      => 'ON = the module loads. Toggles apply from the next page load; disabling a utility also removes its admin tab (come back here to restore it). Under the hood each toggle is the module\'s existing gate option, so <code>wp option update &lt;gate&gt; 0</code> still works.',
 				'Anthropic API key'    => 'The site-wide Claude key (<code>sk-ant-…</code> from console.anthropic.com), used by Event SEO (AI) and any future AI utility. Stored server-side, never shown again — the field stays blank once saved; type only to replace, or tick "remove" to delete it.',
-				'Sweep DRY-RUN'        => 'The one inverted toggle: ON is the safe state (the MEC dedup sweep logs, deletes nothing).',
 			),
 			'notes'  => 'This page manages <em>this site\'s</em> gates only — the main site and the Krampus install each keep their own switchboard (the Krampus copy runs with most main-site utilities off).',
 		) );

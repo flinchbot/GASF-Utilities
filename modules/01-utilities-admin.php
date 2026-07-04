@@ -5,7 +5,7 @@
  * A single top-level "GASF Utilities" menu renders a tabbed page. Modules add
  * their own tab with:
  *     gasf_utilities_add_tab( 'slug', 'Label', 'render_callback', $priority );
- * Built-in tabs: Overview, Event Calendars. (Home Page Hero adds "Heroes".)
+ * Built-in tabs: Overview (here) and Settings (modules/02-settings.php).
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -28,9 +28,6 @@ add_action( 'admin_menu', function () {
 /* register the built-in tabs (modules register theirs on admin_menu too) */
 add_action( 'admin_menu', function () {
 	gasf_utilities_add_tab( 'overview', 'Overview', 'gasf_utilities_overview_tab', 1 );
-	// NOTE: the FB->MEC sync status (gasf_utilities_events_tab) is no longer a tab here —
-	// it is rendered on the Event Calendars > Settings page (GASF Event Calendars plugin),
-	// merged with the Eventbrite settings. The function is kept for that plugin to call.
 }, 10 );
 
 /* ---------- shared "About this utility" docs panel ----------
@@ -137,41 +134,5 @@ function gasf_utilities_overview_tab() {
 	echo '<p style="color:#666;margin-top:18px">Git-backed (repo <code>flinchbot/GASF-Utilities</code>); deploy = <code>git pull</code> in <code>/home4/germanta/gasf-muplugin</code>. Never edit these files on the server. Feature gates are <code>gasf_site_enable_*</code> / <code>gasf_mec_enable_*</code> options — toggle them on the <a href="' . $tab( 'settings' ) . '">Settings tab</a> (or <code>wp option update &lt;gate&gt; 0</code>). Related but separate: the <strong>GASF-Events</strong> plugin (events calendar, Facebook feed, Eventbrite publishing — see Events &rarr; Feeds and All Events).</p>';
 }
 
-/* ---------- Event Calendars tab ---------- */
-function gasf_utilities_events_tab() {
-	echo '<h3>Facebook sync &amp; Modern Events Calendar fixes</h3>';
-	echo '<p>These modules run automatically on the importer\'s schedule. <strong>Facebook is the source of truth</strong> — upcoming FB-imported events have their title, date/time and cover refreshed each sync; vanished FB events are unpublished. Status below.</p>';
-
-	// recent importer audit log
-	$log = defined( 'GASF_MEC_LOG' ) ? GASF_MEC_LOG : '/home4/germanta/gasf-mec-importer.log';
-	echo '<h4>Recent sync activity</h4>';
-	if ( @is_readable( $log ) ) {
-		$all   = array_values( array_filter( explode( "\n", (string) @file_get_contents( $log ) ) ) );
-		$lines = array_slice( $all, -10 );
-		echo '<pre style="background:#fff;border:1px solid #ccd0d4;padding:10px;max-height:240px;overflow:auto;font-size:12px">' . esc_html( implode( "\n", $lines ) ) . '</pre>';
-	} else {
-		echo '<p><em>Audit log not readable.</em></p>';
-	}
-
-	// module switches (gasf_mec_enable_* options that have been set)
-	global $wpdb;
-	$rows = $wpdb->get_results( "SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE 'gasf_mec_enable_%' ORDER BY option_name" );
-	echo '<h4>Module switches</h4>';
-	if ( $rows ) {
-		echo '<table class="widefat striped" style="max-width:560px"><thead><tr><th>Gate</th><th>State</th></tr></thead><tbody>';
-		foreach ( $rows as $r ) {
-			$on = ! ( $r->option_value === '0' || $r->option_value === 'false' );
-			echo '<tr><td><code>' . esc_html( $r->option_name ) . '</code></td><td>' . ( $on ? '<span style="color:#1a7f37">● on</span>' : '<span style="color:#b3122b">○ off</span>' ) . '</td></tr>';
-		}
-		echo '</tbody></table>';
-		echo '<p style="color:#666">Stored as options (default on); set a gate to <code>0</code> to disable its module. Most modules have no UI here by design.</p>';
-	} else {
-		echo '<p style="color:#666">No gate options set — all modules running on defaults (on).</p>';
-	}
-
-	// quick links
-	echo '<h4>Quick links</h4><ul style="list-style:disc;margin-left:22px">';
-	echo '<li><a href="' . esc_url( admin_url( 'edit.php?post_type=mec-events' ) ) . '">All events (Modern Events Calendar)</a></li>';
-	echo '<li><a href="' . esc_url( admin_url( 'admin.php?page=gasf-utilities&tab=heroes' ) ) . '">Home Page Hero (Heroes tab)</a></li>';
-	echo '</ul>';
-}
+// (The old "Event Calendars" tab — gasf_utilities_events_tab — was removed in
+// v1.3.0 along with the MEC importer modules; the Settings tab shows gate state.)

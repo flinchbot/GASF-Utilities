@@ -46,9 +46,7 @@ function gasf_settings_registry() {
 		'Content & home page' => array(
 			array( 'gate' => 'gasf_mec_enable_hero', 'label' => 'Home Page Hero + Recurring Heroes', 'desc' => 'The <code>[gas_hero]</code> banner, the Heroes scheduler and the event-driven Recurring Heroes (one gate covers both tabs).', 'tab' => 'heroes' ),
 			array( 'gate' => 'gasf_site_enable_parking', 'label' => 'Parking block', 'desc' => 'The <code>[gas_parking]</code> "Getting Here, Parking &amp; Transit" block for event pages.' ),
-			array( 'gate' => 'gasf_mec_enable_dinner_events', 'label' => 'German Dinner events list', 'desc' => 'The <code>[german_dinner_events]</code> upcoming Dinner Night list.' ),
 			array( 'gate' => 'gasf_mec_enable_wc_schedule', 'label' => 'World Cup schedule', 'desc' => 'The <code>[world_cup_schedule]</code> watch-party schedule.' ),
-			array( 'gate' => 'gasf_mec_enable_welton', 'label' => 'Welton Brewing status', 'desc' => 'The <code>[welton_status]</code> blurb.' ),
 		),
 		'Sports shortcodes' => array(
 			array( 'gate' => 'gasf_site_enable_bundesliga', 'label' => 'Bundesliga tables &amp; scorers', 'desc' => 'One gate for <code>[bundesliga_table]</code>, <code>[bundesliga_scorers]</code> and <code>[bundesliga_top_scorers]</code> (OpenLigaDB, no key needed).' ),
@@ -80,6 +78,8 @@ function gasf_settings_registry() {
 	// The MEC-importer-era gates (gasf_mec_enable_cron/defaults/window/recurrence/
 	// sweep/single_template/fb_refresh/feierabend, gasf_mec_sweep_dryrun,
 	// gasf_site_enable_us_branded) were removed with their modules in v1.3.0.
+	// gasf_mec_enable_welton + gasf_mec_enable_dinner_events went in v1.5.0 —
+	// GASF-Events' native [gasf_welton_status] / [gasf_dinner_events] replaced them.
 }
 
 add_action( 'admin_menu', function () {

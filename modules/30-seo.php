@@ -72,6 +72,19 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		}
 	}, 0 );
 
+	// Guard against WordPress core's redirect_canonical() looping /wp-sitemap.xml
+	// to itself. Seen in the wild after a conflicting SEO plugin (e.g. SiteSEO)
+	// disabled core sitemaps and was later deactivated — core's canonical-redirect
+	// logic can get stuck redirecting the sitemap request to its own URL forever
+	// (X-Redirect-By: WordPress, Location === the request URL). Runs before
+	// redirect_canonical's default priority 10, so it can unhook it in time.
+	add_action( 'template_redirect', function () {
+		$uri = $_SERVER['REQUEST_URI'] ?? '';
+		if ( 0 === strpos( $uri, '/wp-sitemap' ) ) {
+			remove_action( 'template_redirect', 'redirect_canonical', 10 );
+		}
+	}, 0 );
+
 	/* ---------- title ---------- */
 	function gasf_seo_title() {
 		$s = gasf_seo_settings();

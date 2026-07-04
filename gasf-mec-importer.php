@@ -2,9 +2,10 @@
 /**
  * Plugin Name: GASF Utilities
  * Description: Consolidates the GASF MEC Advanced Importer fixes into one update-safe must-use plugin: cron registration, Facebook page-import defaults, manual-sync window filter, Facebook recurrence expansion, a deterministic duplicate sweep, and a request-log bloat cap. Replaces Code Snippets #17-#21.
- * Version:     1.0.0
+ * Version:     1.1.0
  * Author:      GASF
  * License:     GPL-2.0-or-later
+ * Update URI:  https://github.com/flinchbot/GASF-Utilities
  *
  * Repo: https://github.com/flinchbot/GASF-Utilities
  *
@@ -662,3 +663,42 @@ foreach ( glob( __DIR__ . "/modules/*.php" ) as $gasf_mec_mod ) {
 	require_once $gasf_mec_mod;
 }
 unset( $gasf_mec_mod );
+
+/* =========================================================================
+ * GitHub auto-updates (WP 5.8+ `Update URI` mechanism)
+ *
+ * Only meaningful where this runs as a REGULAR plugin (e.g. the Krampus
+ * site). On the main site it loads as an mu-plugin via the shim, is never in
+ * the plugins list, and these hooks simply never match. Public repo -> no
+ * credentials. Bump the Version header above for installs to see updates.
+ * ========================================================================= */
+add_filter( 'update_plugins_github.com', function ( $update, $plugin_data, $plugin_file ) {
+	if ( basename( $plugin_file ) !== basename( __FILE__ ) ) { return $update; }
+	$ver = get_transient( 'gasf_util_update_check' );
+	if ( ! is_string( $ver ) || '' === $ver ) {
+		$ver  = '';
+		$resp = wp_remote_get( 'https://raw.githubusercontent.com/flinchbot/GASF-Utilities/main/gasf-mec-importer.php', array( 'timeout' => 15 ) );
+		if ( ! is_wp_error( $resp ) && 200 === (int) wp_remote_retrieve_response_code( $resp )
+			&& preg_match( '/^\s*\*?\s*Version:\s*([0-9][0-9a-z.\-]*)/mi', (string) wp_remote_retrieve_body( $resp ), $m ) ) {
+			$ver = trim( $m[1] );
+		}
+		set_transient( 'gasf_util_update_check', $ver, 6 * HOUR_IN_SECONDS );
+	}
+	if ( '' === $ver || version_compare( $ver, (string) $plugin_data['Version'], '<=' ) ) { return $update; }
+	return array(
+		'id'      => 'https://github.com/flinchbot/GASF-Utilities',
+		'slug'    => dirname( $plugin_file ),
+		'plugin'  => $plugin_file,
+		'version' => $ver,
+		'url'     => 'https://github.com/flinchbot/GASF-Utilities',
+		'package' => 'https://github.com/flinchbot/GASF-Utilities/archive/refs/heads/main.zip',
+	);
+}, 10, 3 );
+
+add_filter( 'upgrader_source_selection', function ( $source, $remote_source, $upgrader, $hook_extra ) {
+	if ( is_wp_error( $source ) || empty( $hook_extra['plugin'] ) || basename( (string) $hook_extra['plugin'] ) !== basename( __FILE__ ) ) { return $source; }
+	global $wp_filesystem;
+	$want = trailingslashit( $remote_source ) . dirname( (string) $hook_extra['plugin'] ) . '/';
+	if ( untrailingslashit( $source ) === untrailingslashit( $want ) ) { return $source; }
+	return ( $wp_filesystem && $wp_filesystem->move( $source, $want ) ) ? $want : $source;
+}, 10, 4 );

@@ -50,7 +50,6 @@ function gasf_settings_registry() {
 		),
 		'Sports shortcodes' => array(
 			array( 'gate' => 'gasf_site_enable_bundesliga', 'label' => 'Bundesliga tables &amp; scorers', 'desc' => 'One gate for <code>[bundesliga_table]</code>, <code>[bundesliga_scorers]</code> and <code>[bundesliga_top_scorers]</code> (OpenLigaDB, no key needed).' ),
-			array( 'gate' => 'gasf_mec_enable_bayern_events', 'label' => 'Bayern match events', 'desc' => 'The <code>[bayern_match_events]</code> next-5-matches list.' ),
 		),
 		'Search & links' => array(
 			array( 'gate' => 'gasf_site_enable_seo', 'label' => 'SEO engine', 'desc' => 'Titles, meta descriptions, canonical/robots, OpenGraph/Twitter, JSON-LD, per-page SEO box — the Yoast replacement.', 'tab' => 'seo' ),
@@ -78,8 +77,9 @@ function gasf_settings_registry() {
 	// The MEC-importer-era gates (gasf_mec_enable_cron/defaults/window/recurrence/
 	// sweep/single_template/fb_refresh/feierabend, gasf_mec_sweep_dryrun,
 	// gasf_site_enable_us_branded) were removed with their modules in v1.3.0.
-	// gasf_mec_enable_welton + gasf_mec_enable_dinner_events went in v1.5.0 —
-	// GASF-Events' native [gasf_welton_status] / [gasf_dinner_events] replaced them.
+	// gasf_mec_enable_welton + gasf_mec_enable_dinner_events went in v1.5.0, and
+	// gasf_mec_enable_bayern_events in v1.6.0 — GASF-Events' native
+	// [gasf_welton_status] / [gasf_dinner_events] / [gasf_bayern_events] replaced them.
 }
 
 add_action( 'admin_menu', function () {

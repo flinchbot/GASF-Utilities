@@ -126,7 +126,7 @@ function gasf_utilities_overview_tab() {
 	echo '</ul>';
 
 	echo '<h3>Runs automatically (no tab)</h3><ul style="list-style:disc;margin-left:22px">';
-	echo '<li><strong>Shortcodes</strong> — <code>[gas_hero]</code>, <code>[gas_parking]</code>, <code>[bayern_match_events]</code>, <code>[world_cup_schedule]</code>, <code>[bundesliga_table]</code>, <code>[bundesliga_scorers]</code>, <code>[bundesliga_top_scorers]</code>, <code>[gasf_instagram]</code>, <code>[gasf_reviews]</code>. (Event lists &amp; the Welton blurb are native GASF-Events shortcodes: <code>[gasf_events]</code>, <code>[gasf_upcoming_dates]</code>, <code>[gasf_dinner_events]</code>, <code>[gasf_welton_status]</code>.)</li>';
+	echo '<li><strong>Shortcodes</strong> — <code>[gas_hero]</code>, <code>[gas_parking]</code>, <code>[world_cup_schedule]</code>, <code>[bundesliga_table]</code>, <code>[bundesliga_scorers]</code>, <code>[bundesliga_top_scorers]</code>, <code>[gasf_instagram]</code>, <code>[gasf_reviews]</code>. (Event lists &amp; the Welton blurb are native GASF-Events shortcodes: <code>[gasf_events]</code>, <code>[gasf_upcoming_dates]</code>, <code>[gasf_dinner_events]</code>, <code>[gasf_bayern_events]</code>, <code>[gasf_welton_status]</code>.)</li>';
 	echo '<li><strong>Schema JSON-LD</strong> — Organization + festival Event markup (migrated from the retired HFCM plugin).</li>';
 	echo '<li><strong>Site hardening</strong> — REST user-listing &amp; author-enumeration blocks, misc content 301s.</li>';
 	echo '</ul>';

@@ -62,11 +62,14 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		return $robots;
 	} );
 	// Old Yoast sitemap URLs → core sitemap, so crawlers/GSC don't 404.
+	// NOTE: strpos/preg_match here are deliberately NOT start-anchored to the
+	// literal request path — on a subdirectory install (e.g. /krampus/) the
+	// real REQUEST_URI is "/krampus/wp-sitemap.xml", not "/wp-sitemap.xml".
 	add_action( 'template_redirect', function () {
 		if ( gasf_seo_yoast_active() ) { return; }
 		$uri = $_SERVER['REQUEST_URI'] ?? '';
-		if ( 0 === strpos( $uri, '/wp-sitemap' ) ) { return; } // core sitemaps — never touch
-		if ( preg_match( '#^/sitemap_index\.xml#', $uri ) || preg_match( '#-sitemap\d*\.xml$#', $uri ) ) {
+		if ( false !== strpos( $uri, '/wp-sitemap' ) ) { return; } // core sitemaps — never touch
+		if ( preg_match( '#/sitemap_index\.xml#', $uri ) || preg_match( '#-sitemap\d*\.xml$#', $uri ) ) {
 			wp_redirect( home_url( '/wp-sitemap.xml' ), 301 );
 			exit;
 		}
@@ -78,9 +81,11 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 	// logic can get stuck redirecting the sitemap request to its own URL forever
 	// (X-Redirect-By: WordPress, Location === the request URL). Runs before
 	// redirect_canonical's default priority 10, so it can unhook it in time.
+	// Same subdirectory-install note as above: match anywhere in the URI, not
+	// just at position 0.
 	add_action( 'template_redirect', function () {
 		$uri = $_SERVER['REQUEST_URI'] ?? '';
-		if ( 0 === strpos( $uri, '/wp-sitemap' ) ) {
+		if ( false !== strpos( $uri, '/wp-sitemap' ) ) {
 			remove_action( 'template_redirect', 'redirect_canonical', 10 );
 		}
 	}, 0 );

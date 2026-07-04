@@ -1,5 +1,7 @@
 <?php
 // Migrated from Code Snippet #12 "Welton Brewing Status Blurb" on 2026-06-14 (task 260614-gj8).
+// Event-context branch repointed from retired MEC (mec-events) to the native
+// GASF-Events calendar (gasf_event) on 2026-07-04 (v1.4.0).
 // Gate: gasf_mec_enable_welton (default ON). Original backed up in snippets-backup-20260614.sql.
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 if ( gasf_mec_enabled( 'gasf_mec_enable_welton' ) ) {
@@ -39,29 +41,22 @@ add_shortcode( "welton_status", function( $atts = [] ) {
             $event_end   = null;
         }
     } else {
+        // Event context: a native GASF-Events single page. `_gasf_start`/`_gasf_end`
+        // are 'Y-m-d H:i:s' strings in the site timezone (the model's source of truth).
         $pid = get_queried_object_id();
-        if ( $pid && get_post_type( $pid ) === "mec-events" ) {
-            $sd     = get_post_meta( $pid, "mec_start_date",        true );
-            $ed     = get_post_meta( $pid, "mec_end_date",          true );
-            $sds    = get_post_meta( $pid, "mec_start_day_seconds", true );
-            $eds    = get_post_meta( $pid, "mec_end_day_seconds",   true );
-            $allday = get_post_meta( $pid, "mec_allday",            true );
+        if ( $pid && get_post_type( $pid ) === "gasf_event" ) {
+            $sd     = get_post_meta( $pid, "_gasf_start",   true );
+            $ed     = get_post_meta( $pid, "_gasf_end",     true );
+            $allday = get_post_meta( $pid, "_gasf_all_day", true );
 
             if ( $sd ) {
                 try {
                     if ( $allday ) {
-                        $event_start = new DateTime( $sd . " 00:00", $tz );
-                        $event_end   = new DateTime( ( $ed ?: $sd ) . " 23:59", $tz );
+                        $event_start = new DateTime( substr( $sd, 0, 10 ) . " 00:00", $tz );
+                        $event_end   = new DateTime( substr( ( $ed ?: $sd ), 0, 10 ) . " 23:59", $tz );
                     } else {
-                        $sds_int = (int) $sds;
                         $event_start = new DateTime( $sd, $tz );
-                        $event_start->setTime( intdiv( $sds_int, 3600 ), intdiv( $sds_int % 3600, 60 ), 0 );
-
-                        if ( $eds !== "" && $eds !== null ) {
-                            $eds_int = (int) $eds;
-                            $event_end = new DateTime( $ed ?: $sd, $tz );
-                            $event_end->setTime( intdiv( $eds_int, 3600 ), intdiv( $eds_int % 3600, 60 ), 0 );
-                        }
+                        $event_end   = $ed ? new DateTime( $ed, $tz ) : null;
                     }
                 } catch ( Exception $e ) {
                     $event_start = null;

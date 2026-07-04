@@ -1,41 +1,41 @@
 <?php
 // Migrated from Code Snippet #24 "Shortcode: [bayern_match_events] (next 5 FC Bayern matches)" on 2026-06-14 (task 260614-gj8).
+// Repointed from the retired MEC calendar (mec-events) to the native GASF-Events
+// calendar (gasf_event) on 2026-07-04 (v1.4.0).
 // Gate: gasf_mec_enable_bayern_events (default ON). Original backed up in snippets-backup-20260614.sql.
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 if ( gasf_mec_enabled( 'gasf_mec_enable_bayern_events' ) ) {
 /**
  * Shortcode: [bayern_match_events]
- * Shows the next 5 upcoming FC Bayern matches stored as MEC events.
+ * Shows the next 5 upcoming FC Bayern matches from the GASF events calendar.
  *
- * Moved out of theme functions.php (which is wiped on theme updates) into a
- * Code Snippet so it survives updates.
+ * Filter: title CONTAINS "FC Bayern v" — catches "FC Bayern v X", the newer
+ * "FC Bayern vs X" naming, and cup naming like "DFB Pokalfinale FC Bayern v
+ * Stuttgart". Upcoming only (start >= now).
  *
- * Filter: title CONTAINS "FC Bayern v" (catches "FC Bayern v X" plus cup-final
- * naming like "DFB Pokalfinale FC Bayern v Stuttgart"). Upcoming only (date >= today).
+ * Date/time: `_gasf_start` is the site-local 'Y-m-d H:i:s' source of truth;
+ * `_gasf_start_ts` (UTC unix) is what GASF-Events derives for range queries.
  */
 function bayern_match_events_shortcode() {
 
-    $today        = date('Y-m-d');
     $target_title = 'FC Bayern v';
 
-    $args = array(
-        'post_type'      => 'mec-events',
+    $query = new WP_Query( array(
+        'post_type'      => 'gasf_event',
         'posts_per_page' => 100,
-        'post_status'    => array('publish', 'future'),
+        'post_status'    => array( 'publish', 'future' ),
         'meta_query'     => array(
             array(
-                'key'     => 'mec_start_date',
-                'value'   => $today,
+                'key'     => '_gasf_start_ts',
+                'value'   => time(),
                 'compare' => '>=',
-                'type'    => 'DATE',
+                'type'    => 'NUMERIC',
             ),
         ),
-        'orderby'   => 'meta_value',
-        'meta_key'  => 'mec_start_date',
+        'orderby'   => 'meta_value_num',
+        'meta_key'  => '_gasf_start_ts',
         'order'     => 'ASC',
-    );
-
-    $query = new WP_Query($args);
+    ) );
 
     $output  = '<div class="bayern-match-block">';
     $output .= '<h2>Upcoming FC Bayern Matches</h2>';
@@ -43,59 +43,53 @@ function bayern_match_events_shortcode() {
 
     $matches = array();
 
-    if ($query->have_posts()) {
-        while ($query->have_posts()) {
+    if ( $query->have_posts() ) {
+        while ( $query->have_posts() ) {
             $query->the_post();
             $event_id = get_the_ID();
-            $title    = trim(get_the_title());
+            $title    = trim( get_the_title() );
 
             // CONTAINS "FC Bayern v" (not just starts-with) so cup finals are included.
-            if (stripos($title, $target_title) !== false) {
+            if ( stripos( $title, $target_title ) !== false ) {
 
-                $event_date_raw = get_post_meta($event_id, 'mec_start_date', true);
-                $formatted_date = $event_date_raw
-                    ? date('F j, Y', strtotime($event_date_raw))
-                    : 'Date not available';
+                $start = get_post_meta( $event_id, '_gasf_start', true ); // site-local Y-m-d H:i:s
+                $ts    = $start ? strtotime( $start ) : false;
 
-                $mec_date = maybe_unserialize(get_post_meta($event_id, 'mec_date', true));
-                if (!empty($mec_date['start']['hour'])) {
-                    $formatted_time = $mec_date['start']['hour'] . ':' . $mec_date['start']['minutes'] . ' ' . $mec_date['start']['ampm'];
-                } else {
-                    // Fallback to the separate start-time meta keys MEC also writes
-                    $h  = get_post_meta($event_id, 'mec_start_time_hour', true);
-                    $m  = get_post_meta($event_id, 'mec_start_time_minutes', true);
-                    $ap = get_post_meta($event_id, 'mec_start_time_ampm', true);
-                    $formatted_time = $h ? ($h . ':' . str_pad($m, 2, '0', STR_PAD_LEFT) . ' ' . $ap) : '';
-                }
+                $formatted_date = $ts ? date( 'F j, Y', $ts ) : 'Date not available';
 
-                $event_desc = get_post_meta($event_id, 'mec_description', true);
+                $all_day   = get_post_meta( $event_id, '_gasf_all_day', true );
+                $hide_time = get_post_meta( $event_id, '_gasf_hide_time', true );
+                $formatted_time = ( $ts && ! $all_day && ! $hide_time ) ? date( 'g:i a', $ts ) : '';
+
+                // Hand-written excerpt only — auto-generated ones are noise here.
+                $desc = has_excerpt( $event_id ) ? trim( wp_strip_all_tags( get_the_excerpt() ) ) : '';
 
                 $matches[] = array(
                     'title' => $title,
                     'date'  => $formatted_date,
                     'time'  => $formatted_time,
-                    'desc'  => !empty($event_desc) ? $event_desc : '',
-                    'link'  => get_permalink($event_id),
+                    'desc'  => $desc,
+                    'link'  => get_permalink( $event_id ),
                 );
             }
         }
         wp_reset_postdata();
     }
 
-    $matches = array_slice($matches, 0, 5);
+    $matches = array_slice( $matches, 0, 5 );
 
-    if (empty($matches)) {
+    if ( empty( $matches ) ) {
         $output .= '<li>No Bayern games scheduled in the near future.</li>';
     } else {
-        foreach ($matches as $match) {
+        foreach ( $matches as $match ) {
             $output .= '<li>';
-            $output .= '<strong><a href="' . esc_url($match['link']) . '">' . esc_html($match['title']) . '</a></strong><br>';
-            $output .= esc_html($match['date']);
-            if (!empty($match['time'])) {
-                $output .= ' at ' . esc_html($match['time']);
+            $output .= '<strong><a href="' . esc_url( $match['link'] ) . '">' . esc_html( $match['title'] ) . '</a></strong><br>';
+            $output .= esc_html( $match['date'] );
+            if ( ! empty( $match['time'] ) ) {
+                $output .= ' at ' . esc_html( $match['time'] );
             }
-            if (!empty($match['desc'])) {
-                $output .= '<br><em>' . esc_html($match['desc']) . '</em>';
+            if ( ! empty( $match['desc'] ) ) {
+                $output .= '<br><em>' . esc_html( $match['desc'] ) . '</em>';
             }
             $output .= '</li>';
         }
@@ -104,5 +98,5 @@ function bayern_match_events_shortcode() {
     $output .= '</ul></div>';
     return $output;
 }
-add_shortcode('bayern_match_events', 'bayern_match_events_shortcode');
+add_shortcode( 'bayern_match_events', 'bayern_match_events_shortcode' );
 }

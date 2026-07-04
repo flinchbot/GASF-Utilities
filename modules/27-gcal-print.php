@@ -10,8 +10,12 @@
  * "all events" sheet — the internal counterpart to the public print at
  * /events/print/YYYY-MM/.
  *
- * Reads the calendar through module 26's service-account helpers
- * (gasf_calsync_api / gasf_calsync_get_settings), so it needs no extra auth.
+ * Reads the calendar through the GASF-Events plugin's Google engine
+ * (GASF_Events\Google_Calendar::api_get + the gasf_events_gcal option), so it
+ * needs no extra auth. (Module 26 "Calendar Sync" was retired in v1.7.0 — the
+ * ICS→Google sync now lives in GASF-Events → Feeds.) NOTE: this mu-plugin
+ * loads BEFORE regular plugins, so the GASF-Events class is checked at call
+ * time, never at file load.
  *
  * Access: it exposes private events, so it is gated behind a secret token —
  *   /internal-calendar/print/?key=SECRET                 (current month)
@@ -23,10 +27,24 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-if ( ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enable_gcalprint' ) : true )
-	&& function_exists( 'gasf_calsync_api' ) ) {
+if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enable_gcalprint' ) : true ) {
 
 	if ( ! defined( 'GASF_GCALPRINT_KEY_OPTION' ) ) { define( 'GASF_GCALPRINT_KEY_OPTION', 'gasf_gcal_print_key' ); }
+
+	/** GASF-Events (a regular plugin) loads after this mu-plugin — call-time check. */
+	function gasf_gcalprint_gcal_ready() {
+		return class_exists( 'GASF_Events\\Google_Calendar' )
+			&& method_exists( 'GASF_Events\\Google_Calendar', 'api_get' )
+			&& \GASF_Events\Google_Calendar::available();
+	}
+
+	/** Destination calendar id: GASF-Events global setting (legacy calsync fallback). */
+	function gasf_gcalprint_calendar_id() {
+		$g = (array) get_option( 'gasf_events_gcal', array() );
+		if ( ! empty( $g['calendar_id'] ) ) { return (string) $g['calendar_id']; }
+		$legacy = (array) get_option( 'gasf_calsync_settings', array() );
+		return (string) ( $legacy['calendar_id'] ?? '' );
+	}
 
 	/* ---------- secret token ---------- */
 	function gasf_gcalprint_key() {
@@ -84,9 +102,9 @@ if ( ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_en
 	 */
 	function gasf_gcalprint_fetch( \DateTimeInterface $grid_start, \DateTimeInterface $range_end ) {
 		$out = array( 'days' => array(), 'error' => '' );
-		$settings = function_exists( 'gasf_calsync_get_settings' ) ? gasf_calsync_get_settings() : array();
-		$cal = $settings['calendar_id'] ?? '';
-		if ( ! $cal ) { $out['error'] = 'No destination calendar configured (Calendar Sync tab).'; return $out; }
+		if ( ! gasf_gcalprint_gcal_ready() ) { $out['error'] = 'GASF-Events plugin (Google engine) not available.'; return $out; }
+		$cal = gasf_gcalprint_calendar_id();
+		if ( ! $cal ) { $out['error'] = 'No destination calendar configured (Events → Feeds).'; return $out; }
 
 		$enc  = rawurlencode( $cal );
 		$page = null;
@@ -96,7 +114,7 @@ if ( ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_en
 				. '&timeMin=' . rawurlencode( $grid_start->format( 'c' ) )
 				. '&timeMax=' . rawurlencode( $range_end->format( 'c' ) );
 			if ( $page ) { $params .= '&pageToken=' . rawurlencode( $page ); }
-			$resp = gasf_calsync_api( 'GET', '/calendars/' . $enc . '/events?' . $params );
+			$resp = \GASF_Events\Google_Calendar::api_get( '/calendars/' . $enc . '/events?' . $params );
 			if ( is_wp_error( $resp ) ) { $out['error'] = $resp->get_error_message(); return $out; }
 			foreach ( (array) ( $resp['items'] ?? array() ) as $it ) {
 				gasf_gcalprint_place( $it, $grid_start, $range_end, $out['days'] );
@@ -289,7 +307,7 @@ if ( ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_en
 		$pretty = home_url( '/internal-calendar/print/' . $this_month . '/?key=' . $key );
 		$curr   = home_url( '/internal-calendar/print/?key=' . $key );
 		$fallbk = home_url( '/?gasf_gcal_print=' . $this_month . '&key=' . $key );
-		$cal    = ( function_exists( 'gasf_calsync_get_settings' ) ? ( gasf_calsync_get_settings()['calendar_id'] ?? '' ) : '' );
+		$cal    = gasf_gcalprint_calendar_id();
 		?>
 		<h2>Internal Calendar (print)</h2>
 		<?php
@@ -297,7 +315,7 @@ if ( ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_en
 			gasf_utilities_doc_panel( array(
 				'what'   => 'A printable one-sheet month grid of <strong>every</strong> event on the internal Google Calendar — including events staff add by hand in Google that never appear on the public website (board meetings, hall holds, private rentals). Meant for the bulletin board and the office wall. It\'s the internal counterpart to the public print view at <code>/events/print/</code>.',
 				'needs'  => array(
-					'The <strong>Calendar Sync</strong> tab configured (this reads the same Google Calendar via the same service account).',
+					'The <strong>GASF-Events</strong> plugin with its Google Calendar destination configured (Events &rarr; Feeds) — this reads the same Google Calendar via the same service account.',
 					'The secret link below — the page is public-but-unguessable, so no WordPress login is needed to open or print it.',
 				),
 				'fields' => array(

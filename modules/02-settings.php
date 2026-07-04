@@ -58,8 +58,7 @@ function gasf_settings_registry() {
 			array( 'gate' => 'gasf_site_enable_redirects', 'label' => 'Redirects &amp; 404 log', 'desc' => '301/302/410 manager plus the live 404 monitor.', 'tab' => 'redirects' ),
 		),
 		'Calendars' => array(
-			array( 'gate' => 'gasf_mec_enable_calsync', 'label' => 'Calendar Sync', 'desc' => 'Mirrors the public events calendar into the internal Google Calendar (service account).', 'tab' => 'calsync' ),
-			array( 'gate' => 'gasf_site_enable_gcalprint', 'label' => 'Internal Calendar (print)', 'desc' => 'Secret-link printable month view of the internal Google Calendar.', 'tab' => 'gcal-print' ),
+			array( 'gate' => 'gasf_site_enable_gcalprint', 'label' => 'Internal Calendar (print)', 'desc' => 'Secret-link printable month view of the internal Google Calendar. (The ICS&rarr;Google sync itself lives in GASF-Events &rarr; Feeds.)', 'tab' => 'gcal-print' ),
 		),
 		'Social & reputation' => array(
 			array( 'gate' => 'gasf_site_enable_instagram', 'label' => 'Instagram feed', 'desc' => 'The native <code>[gasf_instagram]</code> feed. The source account/token and display defaults live on the Instagram tab.', 'tab' => 'instagram' ),

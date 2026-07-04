@@ -115,8 +115,7 @@ function gasf_utilities_overview_tab() {
 	echo '</ul>';
 
 	echo '<h3>Calendars</h3><ul style="list-style:disc;margin-left:22px">';
-	echo '<li><a href="' . $tab( 'calsync' ) . '"><strong>Calendar Sync</strong></a> — mirrors the public events calendar into the internal Google Calendar via a service account.</li>';
-	echo '<li><a href="' . $tab( 'gcal-print' ) . '"><strong>Internal Calendar</strong></a> — a secret-link printable month view of that Google Calendar (includes hand-added private events) for the bulletin board.</li>';
+	echo '<li><a href="' . $tab( 'gcal-print' ) . '"><strong>Internal Calendar</strong></a> — a secret-link printable month view of the internal Google Calendar (includes hand-added private events) for the bulletin board. The calendar syncing itself (any ICS/Facebook source &rarr; site calendar and/or Google Calendar, with filters, title prefixes and colors) lives in the <strong>GASF-Events</strong> plugin: Events &rarr; Feeds.</li>';
 	echo '</ul>';
 
 	echo '<h3>Social &amp; reputation</h3><ul style="list-style:disc;margin-left:22px">';

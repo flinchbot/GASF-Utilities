@@ -2,7 +2,7 @@
 /**
  * Plugin Name: GASF Utilities
  * Description: All custom germantampabay.com functionality in one update-safe plugin: home-page heroes, SEO + AI event descriptions, short links, redirects, Instagram feed, reviews wall, calendar sync, Facebook token watchdog, performance and hardening tweaks, and more. Each module is individually gated — see the GASF Utilities → Settings tab.
- * Version:     1.7.0
+ * Version:     1.7.1
  * Author:      GASF
  * License:     GPL-2.0-or-later
  * Update URI:  https://github.com/flinchbot/GASF-Utilities
@@ -33,7 +33,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'GASF_MEC_VERSION', '1.7.0' );
+define( 'GASF_MEC_VERSION', '1.7.1' );
 
 // Log lives OUTSIDE the web root (parent of ABSPATH), not web-fetchable.
 // Falls back silently if unwritable (logging is best-effort).
@@ -96,10 +96,21 @@ add_filter( 'update_plugins_github.com', function ( $update, $plugin_data, $plug
 	);
 }, 10, 3 );
 
+// GitHub zipballs extract as GASF-Utilities-main/ — rename to the installed
+// folder. Hardened to fail CLOSED: if it can't produce a correctly-named folder
+// that actually contains this main file, it returns a WP_Error, which aborts the
+// upgrade in install_package() BEFORE WordPress deletes the installed version —
+// so a flaky rename can never leave an empty, still-active plugin folder.
 add_filter( 'upgrader_source_selection', function ( $source, $remote_source, $upgrader, $hook_extra ) {
 	if ( is_wp_error( $source ) || empty( $hook_extra['plugin'] ) || basename( (string) $hook_extra['plugin'] ) !== basename( __FILE__ ) ) { return $source; }
 	global $wp_filesystem;
-	$want = trailingslashit( $remote_source ) . dirname( (string) $hook_extra['plugin'] ) . '/';
-	if ( untrailingslashit( $source ) === untrailingslashit( $want ) ) { return $source; }
-	return ( $wp_filesystem && $wp_filesystem->move( $source, $want ) ) ? $want : $source;
+	if ( ! $wp_filesystem ) { return $source; }
+	$main = basename( (string) $hook_extra['plugin'] );                                    // gasf-mec-importer.php
+	$want = trailingslashit( $remote_source ) . dirname( (string) $hook_extra['plugin'] ) . '/'; // …/GASF-Utilities/
+	if ( untrailingslashit( $source ) === untrailingslashit( $want ) ) {
+		return $wp_filesystem->exists( $want . $main ) ? $source : new WP_Error( 'gasf_pkg_incomplete', 'Update package missing ' . $main . '; keeping the installed version.' );
+	}
+	if ( $wp_filesystem->exists( $want ) ) { $wp_filesystem->delete( $want, true ); }
+	if ( $wp_filesystem->move( $source, $want, true ) && $wp_filesystem->exists( $want . $main ) ) { return $want; }
+	return new WP_Error( 'gasf_pkg_move', 'Could not prepare the GASF Utilities update (folder rename failed); keeping the installed version.' );
 }, 10, 4 );

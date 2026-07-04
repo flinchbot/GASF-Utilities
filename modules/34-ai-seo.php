@@ -19,11 +19,16 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enable_aiseo' ) : true ) {
 
 	function gasf_aiseo_cfg() {
-		return wp_parse_args( (array) get_option( 'gasf_aiseo_config', array() ), array(
+		$c = wp_parse_args( (array) get_option( 'gasf_aiseo_config', array() ), array(
 			'key'   => '',
 			'model' => 'claude-haiku-4-5-20251001',
 			'batch' => 12,
 		) );
+		// The site-wide key (Settings tab, option gasf_anthropic_key) wins; the
+		// old per-module key stays as a fallback for installs that never set it.
+		$g = (string) get_option( 'gasf_anthropic_key', '' );
+		if ( '' !== $g ) { $c['key'] = $g; }
+		return $c;
 	}
 
 	/** Call the Anthropic Messages API; return generated text or WP_Error. */
@@ -118,10 +123,10 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		if ( isset( $_POST['gasf_aiseo_action'] ) && check_admin_referer( 'gasf_aiseo' ) ) {
 			$act = sanitize_text_field( wp_unslash( $_POST['gasf_aiseo_action'] ) );
 			if ( 'save' === $act ) {
-				$c = gasf_aiseo_cfg();
-				$newkey = trim( sanitize_text_field( wp_unslash( $_POST['key'] ?? '' ) ) );
-				if ( '' !== $newkey ) { $c['key'] = $newkey; }
-				$c['model'] = sanitize_text_field( wp_unslash( $_POST['model'] ?? $c['model'] ) ) ?: 'claude-haiku-4-5-20251001';
+				// Save to the RAW option (not gasf_aiseo_cfg(), which merges in the
+				// site-wide key) so the global key never gets copied in here.
+				$c = (array) get_option( 'gasf_aiseo_config', array() );
+				$c['model'] = sanitize_text_field( wp_unslash( $_POST['model'] ?? ( $c['model'] ?? '' ) ) ) ?: 'claude-haiku-4-5-20251001';
 				$c['batch'] = max( 1, min( 50, (int) ( $_POST['batch'] ?? 12 ) ) );
 				update_option( 'gasf_aiseo_config', $c, false );
 				echo '<div class="notice notice-success is-dismissible"><p>Saved.</p></div>';
@@ -151,10 +156,10 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 					'Events on the GASF calendar; new event names are picked up automatically.',
 				),
 				'fields' => array(
-					'Anthropic API key' => 'Your <code>sk-ant-…</code> key. Stored server-side only and never shown again — the field stays blank once saved; type here only to replace it.',
+					'Anthropic API key' => 'The <strong>site-wide</strong> Claude key — set it once on the <strong>Settings</strong> tab; this tab just shows whether one is saved.',
 					'Model'             => 'Which Claude model writes the copy. The default Haiku model is fast, cheap, and plenty for meta descriptions; use a Sonnet model for richer phrasing at higher cost.',
 					'Batch size'        => 'How many event names one click of Generate processes. Keep ≤ ~15 — each name is a live API call and too many can hit the page\'s time limit.',
-					'Save'              => 'Stores key/model/batch. Leaving the key blank keeps the saved one.',
+					'Save'              => 'Stores model/batch (the API key lives on the Settings tab).',
 					'Test (sample)'     => 'One throw-away API call with a sample event to confirm the key + model work. Nothing is saved to any event.',
 					'Generate next N'   => 'Processes the next batch of blank event names and writes their descriptions. Click repeatedly to drain the backlog — the counter above shows what\'s left.',
 				),
@@ -171,7 +176,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		<h3 class="title">Settings</h3>
 		<form method="post"><?php wp_nonce_field( 'gasf_aiseo' ); ?>
 			<table class="form-table" role="presentation">
-				<tr><th scope="row">Anthropic API key</th><td><input type="text" name="key" value="" class="regular-text code" placeholder="<?php echo $c['key'] ? 'saved — leave blank to keep' : 'sk-ant-…'; ?>"><p class="description">Stored server-side; never shown on the site.</p></td></tr>
+				<tr><th scope="row">Anthropic API key</th><td><?php echo $c['key'] ? '<span style="color:#1a7f37">● saved</span>' : '<span style="color:#b3122b">○ not set</span>'; ?> — site-wide key, managed on the <a href="<?php echo esc_url( admin_url( 'admin.php?page=gasf-utilities&tab=settings' ) ); ?>">Settings tab</a>.</td></tr>
 				<tr><th scope="row">Model</th><td><input type="text" name="model" value="<?php echo esc_attr( $c['model'] ); ?>" class="regular-text code"><p class="description">Default <code>claude-haiku-4-5-20251001</code> — fast &amp; cheap for meta descriptions.</p></td></tr>
 				<tr><th scope="row">Batch size</th><td><input type="number" name="batch" value="<?php echo (int) $c['batch']; ?>" min="1" max="50" class="small-text"> event names per click <span class="description">(keep ≤ ~15 to avoid request timeouts)</span></td></tr>
 			</table>

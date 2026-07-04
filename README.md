@@ -87,7 +87,11 @@ gasf_mec_sweep_dryrun       Sweep dry-run: logs candidates but DELETES NOTHING.
                             Set to '0' to enable real deletion.
 ```
 
-Disable any module: `wp option update <name> 0`. Manual sweep: `do_action('gasf_mec_run_sweep')`.
+Disable any module: `wp option update <name> 0` — or use the UI at
+**wp-admin → GASF Utilities → Settings** (`modules/02-settings.php`), which lists every
+gate (`gasf_mec_enable_*` and `gasf_site_enable_*`) with an on/off toggle and holds the
+site-wide settings shared by multiple modules (e.g. the Anthropic API key, option
+`gasf_anthropic_key`). Manual sweep: `do_action('gasf_mec_run_sweep')`.
 
 ## Logging
 

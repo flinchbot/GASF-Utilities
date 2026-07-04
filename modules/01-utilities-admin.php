@@ -103,7 +103,7 @@ function gasf_utilities_render() {
 /* ---------- Overview tab ---------- */
 function gasf_utilities_overview_tab() {
 	$tab = function ( $slug ) { return esc_url( admin_url( 'admin.php?page=gasf-utilities&tab=' . $slug ) ); };
-	echo '<p>All custom germantampabay.com functionality lives in this one must-use plugin — every tab above is one self-contained utility. Each tab opens with a collapsible <strong>&#128214; About this utility</strong> panel explaining what it does, what it needs to run, and what every field is for. This Overview is the map.</p>';
+	echo '<p>All custom germantampabay.com functionality lives in this one must-use plugin — every tab above is one self-contained utility. Each tab opens with a collapsible <strong>&#128214; About this utility</strong> panel explaining what it does, what it needs to run, and what every field is for. This Overview is the map. The <a href="' . $tab( 'settings' ) . '"><strong>Settings</strong></a> tab is the switchboard: turn any utility on/off and manage site-wide settings (e.g. the Anthropic API key).</p>';
 
 	echo '<h3>Content &amp; home page</h3><ul style="list-style:disc;margin-left:22px">';
 	echo '<li><a href="' . $tab( 'heroes' ) . '"><strong>Heroes</strong></a> — schedule the home-page hero image (the big banner rendered by the <code>[gas_hero]</code> shortcode). Newest entry whose activation time has passed wins.</li>';
@@ -134,7 +134,7 @@ function gasf_utilities_overview_tab() {
 	echo '<li><strong>Site hardening</strong> — REST user-listing &amp; author-enumeration blocks, misc content 301s.</li>';
 	echo '</ul>';
 
-	echo '<p style="color:#666;margin-top:18px">Git-backed (repo <code>flinchbot/GASF-Utilities</code>); deploy = <code>git pull</code> in <code>/home4/germanta/gasf-muplugin</code>. Never edit these files on the server. Feature gates are <code>gasf_site_enable_*</code> / <code>gasf_mec_enable_*</code> options (default on; set to <code>0</code> to disable a module). Related but separate: the <strong>GASF-Events</strong> plugin (events calendar, Facebook feed, Eventbrite publishing — see Events &rarr; Feeds and All Events).</p>';
+	echo '<p style="color:#666;margin-top:18px">Git-backed (repo <code>flinchbot/GASF-Utilities</code>); deploy = <code>git pull</code> in <code>/home4/germanta/gasf-muplugin</code>. Never edit these files on the server. Feature gates are <code>gasf_site_enable_*</code> / <code>gasf_mec_enable_*</code> options — toggle them on the <a href="' . $tab( 'settings' ) . '">Settings tab</a> (or <code>wp option update &lt;gate&gt; 0</code>). Related but separate: the <strong>GASF-Events</strong> plugin (events calendar, Facebook feed, Eventbrite publishing — see Events &rarr; Feeds and All Events).</p>';
 }
 
 /* ---------- Event Calendars tab ---------- */

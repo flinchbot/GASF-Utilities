@@ -2,7 +2,7 @@
 /**
  * Plugin Name: GASF Utilities
  * Description: Consolidates the GASF MEC Advanced Importer fixes into one update-safe must-use plugin: cron registration, Facebook page-import defaults, manual-sync window filter, Facebook recurrence expansion, a deterministic duplicate sweep, and a request-log bloat cap. Replaces Code Snippets #17-#21.
- * Version:     1.1.0
+ * Version:     1.2.0
  * Author:      GASF
  * License:     GPL-2.0-or-later
  * Update URI:  https://github.com/flinchbot/GASF-Utilities
@@ -18,7 +18,8 @@
  * No MEC / MEC Advanced Importer core files are modified, so both stay
  * update-safe (security patches keep flowing). All behaviour lives here.
  *
- * Feature gates (wp_options, default ON unless noted). Set to '0' to disable:
+ * Feature gates (wp_options, default ON unless noted). Set to '0' to disable —
+ * or use the UI: wp-admin > GASF Utilities > Settings (modules/02-settings.php).
  *   gasf_mec_enable_cron        Module A  - cron registration (replaces #17)
  *   gasf_mec_enable_defaults    Module B  - force FB page defaults (replaces #20)
  *   gasf_mec_enable_window      Module C  - manual-sync window filter (replaces #19)

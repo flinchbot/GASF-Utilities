@@ -41,7 +41,12 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 	function gasf_hero_entry_expires( $e ) {
 		$ev = (int) ( $e['event_id'] ?? 0 );
 		if ( ! $ev ) { return 0; }
-		return (int) get_post_meta( $ev, '_gasf_end_ts', true );
+		$end = (int) get_post_meta( $ev, '_gasf_end_ts', true );
+		if ( ! $end ) { return 0; }
+		// Some feed events record end == start (no real end). Retiring the hero
+		// the second the event begins would be premature — give it 2h of runtime.
+		$start = (int) get_post_meta( $ev, '_gasf_start_ts', true );
+		return ( $end <= $start ) ? $start + 2 * HOUR_IN_SECONDS : $end;
 	}
 
 	/* Active = latest entry whose activation has passed AND whose linked event

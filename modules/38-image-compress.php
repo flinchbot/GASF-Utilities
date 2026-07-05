@@ -104,6 +104,44 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		wp_raise_memory_limit( 'image' );
 		$rot = $is_jpeg ? gasf_imgc_exif_rotation( $src ) : 0;
 
+		// Giant-image routing: estimate decode memory BEFORE loading. Web
+		// requests on shared hosting get far less memory than CLI; a 8000px
+		// PNG needs ~5.5 bytes/pixel in GD and an OOM there is a FATAL (kills
+		// the whole request, uncatchable). If it won't fit, go straight to
+		// Imagick with tight resource limits — Imagick spills its pixel cache
+		// to disk instead of dying, so no image is ever "too big".
+		$dims = @getimagesize( $src );
+		if ( is_array( $dims ) && ! empty( $dims[0] ) && ! empty( $dims[1] ) ) {
+			$est   = (int) ( $dims[0] * $dims[1] * 5.5 ) + (int) ( @filesize( $src ) * 2 );
+			$limit = wp_convert_hr_to_bytes( (string) ini_get( 'memory_limit' ) );
+			$avail = ( $limit > 0 ) ? $limit - memory_get_usage( true ) - 32 * MB_IN_BYTES : PHP_INT_MAX;
+			if ( $est > $avail ) {
+				if ( ! class_exists( 'Imagick' ) ) {
+					return 'too-large for available memory (' . size_format( $est ) . ' needed) and Imagick unavailable';
+				}
+				try {
+					$ik = new Imagick();
+					$ik->setResourceLimit( Imagick::RESOURCETYPE_MEMORY, 96 * MB_IN_BYTES );
+					$ik->setResourceLimit( Imagick::RESOURCETYPE_MAP, 192 * MB_IN_BYTES );
+					$ik->readImage( $src );
+					$ik->setIteratorIndex( 0 );
+					if ( $rot ) { $ik->rotateImage( '#000', 360 - $rot ); }
+					$d = $ik->getImageGeometry();
+					if ( max( $d['width'], $d['height'] ) > $max_w ) {
+						$ik->thumbnailImage( $max_w, $max_w, true );
+					}
+					$ik->setImageFormat( 'webp' );
+					$ik->setImageCompressionQuality( $quality );
+					$ok = $ik->writeImage( $dest );
+					$ik->clear();
+					return ( $ok && file_exists( $dest ) && filesize( $dest ) > 0 ) ? true : 'encode-failed';
+				} catch ( Throwable $e ) {
+					@unlink( $dest );
+					return 'imagick: ' . $e->getMessage();
+				}
+			}
+		}
+
 		$ed = wp_get_image_editor( $src );
 		if ( ! is_wp_error( $ed ) ) {
 			if ( $rot ) { $ed->rotate( $rot ); }
@@ -407,25 +445,43 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		return $limit > 0 ? array_slice( $list, 0, $limit, true ) : $list;
 	}
 
-	/** Process up to settings[batch] attachments, biggest first. */
+	/**
+	 * Process up to settings[batch] attachments, biggest first. Built to
+	 * survive shared-hosting WEB limits (CLI is roomier): each image gets a
+	 * fresh set_time_limit, exceptions are caught per image, and the loop
+	 * pauses gracefully when the request's wall-clock budget runs low —
+	 * the next click (or cron tick) simply resumes where it left off.
+	 */
 	function gasf_imgc_run_batch() {
 		if ( get_transient( 'gasf_imgc_lock' ) ) {
+			gasf_imgc_log_add( 'Run skipped — another run holds the lock (auto-expires within 10 minutes)' );
 			return array( 'compressed' => 0, 'other' => 0, 'saved' => 0, 'lines' => array( 'already running' ) );
 		}
 		set_transient( 'gasf_imgc_lock', 1, 10 * MINUTE_IN_SECONDS );
 
-		$s     = gasf_imgc_settings();
-		$stats = array( 'compressed' => 0, 'other' => 0, 'saved' => 0, 'lines' => array() );
-		$queue = gasf_imgc_candidates( (int) $s['batch'] );
+		$s      = gasf_imgc_settings();
+		$stats  = array( 'compressed' => 0, 'other' => 0, 'saved' => 0, 'lines' => array() );
+		$queue  = gasf_imgc_candidates( (int) $s['batch'] );
+		$t0     = microtime( true );
+		$budget = ( defined( 'WP_CLI' ) && WP_CLI ) ? 3600 : 45; // seconds of wall clock per web request
 		gasf_imgc_log_add( $queue
 			? sprintf( 'Batch started — %d image(s) this run', count( $queue ) )
 			: 'Batch started — nothing to do (backlog empty)' );
 
 		foreach ( $queue as $id => $size ) {
+			if ( ( microtime( true ) - $t0 ) > $budget ) {
+				gasf_imgc_log_add( sprintf( 'Batch paused after %ds — request time budget reached; remaining images continue on the next run/click', (int) ( microtime( true ) - $t0 ) ) );
+				break;
+			}
+			if ( function_exists( 'set_time_limit' ) ) { @set_time_limit( 300 ); } // fresh per-image allowance
 			$name = basename( (string) get_attached_file( $id ) );
 			gasf_imgc_log_add( sprintf( '%s — processing (%s)', $name, size_format( $size ) ) );
 
-			$r = gasf_imgc_process( $id );
+			try {
+				$r = gasf_imgc_process( $id );
+			} catch ( Throwable $e ) {
+				$r = array( 'status' => 'skipped', 'detail' => 'error: ' . $e->getMessage() );
+			}
 			update_post_meta( $id, GASF_IMGC_META, array( 'status' => $r['status'], 'detail' => $r['detail'], 'ts' => time() ) );
 
 			if ( 'compressed' === $r['status'] ) {

@@ -45,6 +45,21 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		) );
 	}
 
+	/* ============================ activity log ============================ */
+
+	/**
+	 * Rolling activity log (option-backed, newest first, capped). Every file
+	 * gets a "processing" line BEFORE work starts and a completion line after —
+	 * so if a run ever dies mid-image, the log shows exactly which file it was
+	 * on. Mirrored to the server log (gasf_mec_log) too.
+	 */
+	function gasf_imgc_log_add( $line ) {
+		$log = (array) get_option( 'gasf_imgc_log', array() );
+		array_unshift( $log, '[' . wp_date( 'Y-m-d H:i:s' ) . '] ' . $line );
+		update_option( 'gasf_imgc_log', array_slice( $log, 0, 200 ), false );
+		if ( function_exists( 'gasf_mec_log' ) ) { gasf_mec_log( 'IMGC ' . $line ); }
+	}
+
 	/* ============================ naming ============================ */
 
 	/**
@@ -351,9 +366,13 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		}
 
 		return array(
-			'status' => 'compressed',
-			'detail' => sprintf( '%s -> %s (%s -> %s, %d refs)', basename( $old_rel ), basename( $new_rel ), size_format( $size ), size_format( $new_size ), $rows ),
-			'saved'  => $size - $new_size,
+			'status'   => 'compressed',
+			'detail'   => sprintf( '%s -> %s (%s -> %s, %d refs)', basename( $old_rel ), basename( $new_rel ), size_format( $size ), size_format( $new_size ), $rows ),
+			'saved'    => $size - $new_size,
+			'orig'     => $size,
+			'new'      => $new_size,
+			'new_name' => basename( $new_rel ),
+			'refs'     => $rows,
 		);
 	}
 
@@ -397,19 +416,38 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 
 		$s     = gasf_imgc_settings();
 		$stats = array( 'compressed' => 0, 'other' => 0, 'saved' => 0, 'lines' => array() );
-		foreach ( gasf_imgc_candidates( (int) $s['batch'] ) as $id => $size ) {
+		$queue = gasf_imgc_candidates( (int) $s['batch'] );
+		gasf_imgc_log_add( $queue
+			? sprintf( 'Batch started — %d image(s) this run', count( $queue ) )
+			: 'Batch started — nothing to do (backlog empty)' );
+
+		foreach ( $queue as $id => $size ) {
+			$name = basename( (string) get_attached_file( $id ) );
+			gasf_imgc_log_add( sprintf( '%s — processing (%s)', $name, size_format( $size ) ) );
+
 			$r = gasf_imgc_process( $id );
 			update_post_meta( $id, GASF_IMGC_META, array( 'status' => $r['status'], 'detail' => $r['detail'], 'ts' => time() ) );
-			$line = sprintf( 'IMGC #%d %s: %s', $id, $r['status'], $r['detail'] );
-			$stats['lines'][] = $line;
-			if ( function_exists( 'gasf_mec_log' ) ) { gasf_mec_log( $line ); }
+
 			if ( 'compressed' === $r['status'] ) {
+				gasf_imgc_log_add( sprintf(
+					'%s — completed. Original size: %s · New size: %s (%d%% smaller, %d reference(s) updated) → %s',
+					$name,
+					size_format( (int) $r['orig'] ),
+					size_format( (int) $r['new'] ),
+					$r['orig'] > 0 ? round( 100 * ( $r['orig'] - $r['new'] ) / $r['orig'] ) : 0,
+					(int) $r['refs'],
+					$r['new_name']
+				) );
 				$stats['compressed']++;
 				$stats['saved'] += (int) ( $r['saved'] ?? 0 );
 			} else {
+				gasf_imgc_log_add( sprintf( '%s — %s: %s', $name, $r['status'], $r['detail'] ) );
 				$stats['other']++;
 			}
+			$stats['lines'][] = sprintf( '#%d %s: %s', $id, $r['status'], $r['detail'] );
 		}
+
+		gasf_imgc_log_add( sprintf( 'Batch finished — %d compressed, %d other, saved %s', $stats['compressed'], $stats['other'], size_format( $stats['saved'] ) ) );
 		if ( $stats['compressed'] > 0 ) {
 			wp_cache_flush();
 		}
@@ -467,7 +505,10 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				echo '<div class="notice notice-info is-dismissible"><p>' . (int) count( $scan ) . ' image(s) above the size threshold (largest first below). Nothing was changed.</p></div>';
 			} elseif ( 'run' === $act ) {
 				$r = gasf_imgc_run_batch();
-				echo '<div class="notice notice-' . ( $r['compressed'] ? 'success' : 'info' ) . ' is-dismissible"><p>Compressed ' . (int) $r['compressed'] . ' image(s), ' . (int) $r['other'] . ' other outcome(s), saved ' . esc_html( size_format( (int) $r['saved'] ) ) . '.' . ( $r['compressed'] ? ' Flush the page cache to see it live.' : '' ) . '</p></div>';
+				echo '<div class="notice notice-' . ( $r['compressed'] ? 'success' : 'info' ) . ' is-dismissible"><p>Compressed ' . (int) $r['compressed'] . ' image(s), ' . (int) $r['other'] . ' other outcome(s), saved ' . esc_html( size_format( (int) $r['saved'] ) ) . '.' . ( $r['compressed'] ? ' Flush the page cache to see it live.' : '' ) . ' Detail in the activity log below.</p></div>';
+			} elseif ( 'clearlog' === $act ) {
+				delete_option( 'gasf_imgc_log' );
+				echo '<div class="notice notice-success is-dismissible"><p>Activity log cleared.</p></div>';
 			}
 		}
 
@@ -491,6 +532,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 					'Batch size'            => 'Images per run (on-demand click or cron tick). Keep modest so runs finish comfortably.',
 					'Run every 4 hours'     => 'Background cron: quietly compresses a batch every 4 hours until the backlog is empty, then keeps watching new uploads.',
 					'Delete originals'      => 'Off (default) keeps the old files on disk for rollback and for anything that cached the old URL. Turn on only to reclaim disk space.',
+				'Activity log'          => 'A running history of everything the compressor does — "filename — processing", then "filename — completed. Original size … New size …" (or why it was skipped). Latest 200 entries, newest first.',
 				),
 				'notes'  => 'Deliberately failure-averse: huge files are fine; a wrong extension or oddball header is handled by decoding the actual file content; strange characters in names are cleaned in the NEW filename only. Anything truly undecodable — or whose WebP would be <em>larger</em> — is logged, marked done, and left untouched.',
 			) );
@@ -533,9 +575,17 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			<p><button name="gasf_imgc_action" value="save" class="button button-primary">Save settings</button></p>
 		</form>
 
-		<?php if ( ! empty( $last['lines'] ) ) : ?>
-			<h3 class="title">Last run detail</h3>
-			<pre style="background:#fff;border:1px solid #ccd0d4;padding:10px;max-height:220px;overflow:auto;font-size:12px"><?php echo esc_html( implode( "\n", array_slice( (array) $last['lines'], 0, 25 ) ) ); ?></pre>
+		<?php $log = (array) get_option( 'gasf_imgc_log', array() ); ?>
+		<h3 class="title">Activity log</h3>
+		<p class="description">Newest first. Every image gets a <em>processing</em> line before work starts and a <em>completed</em> line after (with original &rarr; new size) — if a run ever stalls, the last <em>processing</em> line names the file it was on. Keeps the latest 200 entries; also mirrored to the server log.</p>
+		<?php if ( $log ) : ?>
+			<pre style="background:#fff;border:1px solid #ccd0d4;padding:10px;max-height:340px;overflow:auto;font-size:12px;line-height:1.5"><?php echo esc_html( implode( "\n", array_slice( $log, 0, 100 ) ) ); ?></pre>
+			<form method="post" onsubmit="return confirm('Clear the activity log?');">
+				<?php wp_nonce_field( 'gasf_imgc' ); ?>
+				<p><button name="gasf_imgc_action" value="clearlog" class="button">Clear log</button></p>
+			</form>
+		<?php else : ?>
+			<p><em>No activity yet — run a Scan or Compress batch above.</em></p>
 		<?php endif; ?>
 		<?php
 	}

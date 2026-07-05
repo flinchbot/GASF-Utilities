@@ -33,13 +33,29 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		usort( $entries, function ( $a, $b ) { return ( (int) $a['activate_at'] ) <=> ( (int) $b['activate_at'] ); } );
 		update_option( GASF_HERO_OPTION, $entries, false );
 	}
-	/* Active = latest entry whose activation time has already passed. */
+	/**
+	 * When an entry stops showing: the linked event's end, read live from the
+	 * event meta (so a resynced event time is honored automatically).
+	 * 0 = no linked event / no end recorded = never expires.
+	 */
+	function gasf_hero_entry_expires( $e ) {
+		$ev = (int) ( $e['event_id'] ?? 0 );
+		if ( ! $ev ) { return 0; }
+		return (int) get_post_meta( $ev, '_gasf_end_ts', true );
+	}
+
+	/* Active = latest entry whose activation has passed AND whose linked event
+	 * (if any) hasn't ended. Ended heroes fall away, so the next-newest
+	 * still-valid hero (or a recurring one) shows instead. */
 	function gasf_hero_active() {
 		$now = time();
 		$active = null;
 		foreach ( gasf_hero_get_entries() as $e ) {
 			$ts = (int) $e['activate_at'];
-			if ( $ts <= $now && ( $active === null || $ts >= (int) $active['activate_at'] ) ) {
+			if ( $ts > $now ) { continue; }
+			$exp = gasf_hero_entry_expires( $e );
+			if ( $exp > 0 && $exp <= $now ) { continue; } // event over — hero retired
+			if ( $active === null || $ts >= (int) $active['activate_at'] ) {
 				$active = $e;
 			}
 		}
@@ -266,6 +282,11 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 					'event_id'     => (int) ( $_POST['gasf_hero_event_id'] ?? 0 ),
 				);
 
+				// Purge the home cache when this hero's linked event ends, so the
+				// fallback hero appears on time (activation purge is scheduled below).
+				$exp_ts = gasf_hero_entry_expires( $sanitized_data );
+				if ( $exp_ts > time() ) { gasf_hero_schedule_purge( $exp_ts + 60 ); }
+
 				if ( $edit_id !== '' ) {
 					// Edit in-place: find the matching entry and overwrite its editable fields.
 					$found = false;
@@ -322,7 +343,8 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 						'Image link (optional)'   => 'A URL that makes the entire image clickable — usually the event page or ticket link. Leave blank for a non-clickable banner.',
 						'Caption (optional)'      => 'Short text shown under the image (basic HTML/links allowed). Use it for a date/tagline the image itself doesn\'t carry.',
 						'Button label + link'     => 'Adds a call-to-action button below the caption (e.g. "Get Tickets"). The button link can differ from the image link. Both blank = no button.',
-						'Go live on'              => 'When this hero takes over the home page, in site time. Set now/past to show immediately. Nothing needs to "expire" — the next scheduled hero simply replaces it.',
+						'Go live on'              => 'When this hero takes over the home page, in site time. Set now/past to show immediately.',
+					'End (automatic)'         => 'A hero linked to a calendar event (quick-create links it for you) retires automatically when that event ends — the previous still-valid hero returns. No linked event = shows indefinitely until a newer hero activates. The Status column shows "ends …" on the live hero and "ended" on retired ones.',
 						'Advanced: display width' => 'Max rendered width in px, centered (default 450). Set 0 to span the full content width.',
 					),
 					'notes'  => 'Recurring events (Euchre Night, Krampus Meetup…) don\'t need manual entries — see the <strong>Recurring Heroes</strong> tab, which auto-shows a hero before each occurrence. A manual hero scheduled here always outranks a recurring one.',
@@ -460,10 +482,18 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 					$display = $entries;
 					usort( $display, function ( $a, $b ) { return (int) $b['activate_at'] <=> (int) $a['activate_at']; } );
 					foreach ( $display as $e ) :
-					$ts     = (int) $e['activate_at'];
-					$status = ( $e['id'] === $active_id )
-						? '<strong style="color:#1a7f37">● LIVE NOW</strong>'
-						: ( $ts > $now ? '<span style="color:#8250df">queued</span>' : '<span style="color:#888">past</span>' );
+					$ts  = (int) $e['activate_at'];
+					$exp = gasf_hero_entry_expires( $e );
+					if ( $e['id'] === $active_id ) {
+						$status = '<strong style="color:#1a7f37">● LIVE NOW</strong>'
+							. ( $exp > $now ? '<br><small style="color:#666">ends ' . esc_html( wp_date( 'M j, g:i a', $exp ) ) . '</small>' : '' );
+					} elseif ( $exp > 0 && $exp <= $now ) {
+						$status = '<span style="color:#b45309" title="Linked event has ended — this hero retired automatically">ended</span>';
+					} elseif ( $ts > $now ) {
+						$status = '<span style="color:#8250df">queued</span>';
+					} else {
+						$status = '<span style="color:#888">past</span>';
+					}
 					$thumb  = wp_get_attachment_image( (int) $e['image_id'], array( 90, 90 ) );
 					$img_url = isset( $e['image_url'] ) ? $e['image_url'] : '';
 				?>

@@ -70,6 +70,7 @@ function gasf_settings_registry() {
 			array( 'gate' => 'gasf_site_enable_schema', 'label' => 'Schema JSON-LD', 'desc' => 'Organization + festival Event structured data in <code>&lt;head&gt;</code>.' ),
 			array( 'gate' => 'gasf_site_enable_assetdiet', 'label' => 'Asset diet', 'desc' => 'Drops jQuery Migrate, scopes dFlip to its page, self-hosts theme fonts.' ),
 			array( 'gate' => 'gasf_site_enable_perf', 'label' => 'Performance (LCP &amp; images)', 'desc' => 'Hero preload + right-sizing, image CDN preconnect — the mobile-LCP fixes.' ),
+			array( 'gate' => 'gasf_site_enable_imgcompress', 'label' => 'Image compressor', 'desc' => 'Converts oversized JPEG/PNG uploads to WebP on this server (no quota, no size limit) and rewrites all references. On-demand + optional 4-hourly cron.', 'tab' => 'images' ),
 			array( 'gate' => 'gasf_site_enable_deferjs', 'label' => 'Defer JavaScript', 'desc' => 'Part of the Performance module: adds <code>defer</code> to front-end scripts. Toggle off first if a slider/menu misbehaves.' ),
 		),
 	);

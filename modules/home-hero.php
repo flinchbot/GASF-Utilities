@@ -352,7 +352,7 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 					'End (automatic)'         => 'A hero linked to a calendar event (quick-create links it for you) retires automatically when that event ends — the previous still-valid hero returns. No linked event = shows indefinitely until a newer hero activates. The Status column shows "ends …" on the live hero and "ended" on retired ones.',
 						'Advanced: display width' => 'Max rendered width in px, centered (default 450). Set 0 to span the full content width.',
 					),
-					'notes'  => 'Recurring events (Euchre Night, Krampus Meetup…) don\'t need manual entries — see the <strong>Recurring Heroes</strong> tab, which auto-shows a hero before each occurrence. A manual hero scheduled here always outranks a recurring one.',
+					'notes'  => 'Recurring events (Euchre Night, Krampus Meetup…) don\'t need manual entries — see the <strong>Recurring Heroes</strong> tab, which auto-shows a hero before each occurrence. Precedence: a manual hero linked to a still-running event holds the page until that event ends, then any due recurring hero takes over; unlinked heroes only outrank a recurring one if scheduled after its trigger.',
 				) );
 			}
 			?>

@@ -12,9 +12,10 @@
  *   - Driven off the calendar: it only appears if a matching `gasf_event`
  *     actually exists and is upcoming. Skip the event in a given month (no
  *     post) and no hero shows — no stale/"boring default" image.
- *   - Manual override: a hand-scheduled hero (Heroes tab) whose go-live is at
- *     or after the recurring trigger wins for that date. The everyday standing
- *     hero (activated long ago) is overridden *during* the window only.
+ *   - Manual override: a hand-scheduled hero linked to a still-running event
+ *     holds the slot until that event ends (the recurring hero then takes the
+ *     rest of its window). Unlinked/standing heroes only outrank a recurring
+ *     hero when their go-live is at/after the recurring trigger.
  *
  * Matching is by event TITLE — the GASF Events data has no formal series ids;
  * repeating events simply share a title (e.g. "Euchre Night").
@@ -176,9 +177,22 @@ if ( function_exists( 'gasf_mec_enabled' ) && gasf_mec_enabled( 'gasf_mec_enable
 	add_filter( 'gasf_hero_active_entry', function ( $manual ) {
 		$r = gasf_hero_recurring_active();
 		if ( ! $r ) { return $manual; }
-		// A hand-scheduled hero at/after the recurring trigger overrides the date.
-		if ( is_array( $manual ) && (int) ( $manual['activate_at'] ?? 0 ) >= (int) $r['activate_at'] ) {
-			return $manual;
+		if ( is_array( $manual ) ) {
+			// A manual hero tied to a still-running event HOLDS the slot until that
+			// event ends — a recurring trigger opening mid-flight can't cut it off.
+			// (gasf_hero_active already dropped expired manuals, so expires > now
+			// here means "linked and not yet over".) When it ends, the recurring
+			// hero takes whatever remains of its own window.
+			$exp = function_exists( 'gasf_hero_entry_expires' ) ? gasf_hero_entry_expires( $manual ) : 0;
+			if ( $exp > time() ) {
+				return $manual;
+			}
+			// Unlinked/standing heroes have no end, so "newest activation wins"
+			// still applies — otherwise an old standing hero would block every
+			// recurring hero forever.
+			if ( (int) ( $manual['activate_at'] ?? 0 ) >= (int) $r['activate_at'] ) {
+				return $manual;
+			}
 		}
 		return $r;
 	}, 10 );
@@ -287,7 +301,7 @@ if ( function_exists( 'gasf_mec_enabled' ) && gasf_mec_enabled( 'gasf_mec_enable
 					'Enabled'                   => 'Untick to pause this recurring hero without deleting its configuration.',
 					'Advanced: display width'   => 'Max rendered width in px, centered (default 450). 0 = full content width.',
 				),
-				'notes'  => 'Precedence: a hand-scheduled hero on the <strong>Heroes</strong> tab always beats a recurring hero for the same dates — use that for one-off overrides.',
+				'notes'  => 'Precedence: a hand-scheduled hero (Heroes tab) that is linked to a still-running event holds the page until that event ends — then the recurring hero takes whatever remains of its lead window (e.g. manual ends Friday night, Saturday\'s recurring hero shows from Friday night). Unlinked standing heroes only beat a recurring hero if scheduled after its trigger.',
 			) );
 		}
 		?>

@@ -241,8 +241,11 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			}
 		}
 
-		// Smart Slider caches generated copies of source images; drop it so the
-		// slider rebuilds from the new WebP (regenerates on demand).
+		// Smart Slider caches generated copies of source images on disk AND the
+		// fully-rendered slider HTML in its section_storage table (application =
+		// 'cache' rows — what its own "Clear cache" button deletes). Purge both,
+		// or the served markup keeps pointing at the old files, which Smart
+		// Slider then happily regenerates from the kept originals.
 		$up   = wp_upload_dir();
 		$slcache = trailingslashit( $up['basedir'] ) . 'slider/cache';
 		if ( is_dir( $slcache ) ) {
@@ -254,6 +257,10 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 					@unlink( $entry );
 				}
 			}
+		}
+		$section = $wpdb->prefix . 'nextend2_section_storage';
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $section ) ) === $section ) {
+			$wpdb->query( $wpdb->prepare( "DELETE FROM `$section` WHERE application = %s", 'cache' ) ); // phpcs:ignore
 		}
 
 		return $rows;

@@ -17,10 +17,52 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 	if ( ! defined( 'GASF_PDF2PNG_MAX_BYTES' ) ) { define( 'GASF_PDF2PNG_MAX_BYTES', 30 * 1024 * 1024 ); }
 
 	/**
+	 * Surgically detach/restore the host image optimizers around our inserts.
+	 * Newfold's ImageUploadListener (Bluehost) hooks add_attachment/wp_handle_upload,
+	 * converts to WebP via their cloud API and DELETES the original PNG; Imagify
+	 * (Krampus) hooks the same events. We remove exactly those callbacks — nothing
+	 * else on the hooks — and put them back when done.
+	 */
+	function gasf_pdf2png_optimizer_toggle( $off ) {
+		static $saved = array();
+		global $wp_filter;
+		$hooks = array( 'add_attachment', 'wp_handle_upload', 'wp_generate_attachment_metadata' );
+		if ( $off ) {
+			$saved = array();
+			foreach ( $hooks as $hook ) {
+				if ( empty( $wp_filter[ $hook ] ) ) { continue; }
+				foreach ( $wp_filter[ $hook ]->callbacks as $prio => $cbs ) {
+					foreach ( $cbs as $key => $cb ) {
+						$fn  = $cb['function'];
+						$cls = '';
+						if ( is_array( $fn ) ) { $cls = is_object( $fn[0] ) ? get_class( $fn[0] ) : (string) $fn[0]; }
+						elseif ( is_string( $fn ) ) { $cls = $fn; }
+						if ( $cls && preg_match( '/ImageUploadListener|NewfoldLabs\\\\WP\\\\Module\\\\Performance\\\\Images|Imagify/i', $cls ) ) {
+							$saved[] = array( $hook, $prio, $key, $cb );
+							unset( $wp_filter[ $hook ]->callbacks[ $prio ][ $key ] );
+						}
+					}
+				}
+			}
+			add_filter( 'imagify_auto_optimize_attachment', '__return_false', 999 ); // belt & suspenders (Krampus)
+			return count( $saved );
+		}
+		foreach ( $saved as $s ) {
+			list( $hook, $prio, $key, $cb ) = $s;
+			if ( isset( $wp_filter[ $hook ] ) ) { $wp_filter[ $hook ]->callbacks[ $prio ][ $key ] = $cb; }
+		}
+		remove_filter( 'imagify_auto_optimize_attachment', '__return_false', 999 );
+		$saved = array();
+		return 0;
+	}
+
+	/**
 	 * Convert a PDF file to PNG attachments. Returns
 	 * array( 'pages' => [ [id, url] … ], 'errors' => [ … ] ).
+	 * $keep_png = true bypasses the host's WebP conversion so the files stay
+	 * genuine .png; false lets the optimizer do its normal (smaller) WebP thing.
 	 */
-	function gasf_pdf2png_convert( $path, $dpi, $basename ) {
+	function gasf_pdf2png_convert( $path, $dpi, $basename, $keep_png = false ) {
 		$out = array( 'pages' => array(), 'errors' => array() );
 		if ( ! class_exists( 'Imagick' ) ) { $out['errors'][] = 'Imagick not available on this server.'; return $out; }
 		$dpi = in_array( (int) $dpi, array( 72, 100, 150, 200, 300 ), true ) ? (int) $dpi : 150;
@@ -44,6 +86,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$budget = microtime( true ) + 50; // stay under request limits; report what didn't fit
 
 		require_once ABSPATH . 'wp-admin/includes/image.php';
+		if ( $keep_png ) { gasf_pdf2png_optimizer_toggle( true ); }
 		for ( $i = 0; $i < $pages; $i++ ) {
 			if ( microtime( true ) > $budget ) {
 				$out['errors'][] = sprintf( 'Time limit — stopped after page %d of %d. Re-upload with a lower DPI for the rest.', $i, $pages );
@@ -75,8 +118,9 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			), $up['file'] );
 			if ( is_wp_error( $att_id ) ) { $out['errors'][] = 'Page ' . ( $i + 1 ) . ': ' . $att_id->get_error_message(); continue; }
 			wp_update_attachment_metadata( $att_id, wp_generate_attachment_metadata( $att_id, $up['file'] ) );
-			$out['pages'][] = array( 'id' => (int) $att_id, 'url' => $up['url'] );
+			$out['pages'][] = array( 'id' => (int) $att_id, 'url' => wp_get_attachment_url( $att_id ) ?: $up['url'] );
 		}
+		if ( $keep_png ) { gasf_pdf2png_optimizer_toggle( false ); }
 		return $out;
 	}
 
@@ -101,7 +145,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				if ( 'application/pdf' !== ( $check['type'] ?? '' ) && 'application/pdf' !== $finfo ) {
 					echo '<div class="notice notice-error"><p>That file isn&rsquo;t a PDF.</p></div>';
 				} else {
-					$result = gasf_pdf2png_convert( $f['tmp_name'], (int) ( $_POST['dpi'] ?? 150 ), (string) $f['name'] );
+					$result = gasf_pdf2png_convert( $f['tmp_name'], (int) ( $_POST['dpi'] ?? 150 ), (string) $f['name'], ! empty( $_POST['keep_png'] ) );
 					if ( $result['pages'] ) {
 						echo '<div class="notice notice-success is-dismissible"><p>Converted ' . count( $result['pages'] ) . ' page(s) to the Media Library.</p></div>';
 					}
@@ -119,6 +163,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				'fields' => array(
 					'PDF file'   => 'The document to convert. Multi-page PDFs produce one PNG per page.',
 					'Resolution' => '<strong>150 DPI</strong> (default) is right for web use — sharp on screens, reasonable file size. Use <strong>72</strong> for quick previews, <strong>300</strong> only if the image will be zoomed/printed (files get big and large PDFs may need two runs).',
+					'Format'     => 'By default the host\'s image optimizer stores the pages as WebP (smaller, perfect for the site). Tick <strong>Keep as true .png</strong> to bypass it for this conversion — use that when you need real PNG files to download or send elsewhere.',
 					'Convert'    => 'Runs the conversion and lists each created image with links. Everything lands in the Media Library like any normal upload — nothing extra to clean up.',
 				),
 			) );
@@ -136,6 +181,9 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 						<option value="150" selected>150 DPI — web (recommended)</option>
 						<option value="300">300 DPI — print quality</option>
 					</select></td></tr>
+				<tr><th scope="row">Format</th>
+					<td><label><input type="checkbox" name="keep_png" value="1"> Keep as true <code>.png</code> (bypass the host&rsquo;s WebP optimizer)</label>
+					<p class="description">Unchecked (default): the host converts to WebP — smaller files, ideal for using on the site. Check this when you need actual PNG files, e.g. to download and use outside the website.</p></td></tr>
 			</table>
 			<p><button name="gasf_pdf2png_go" value="1" class="button button-primary">Convert to PNG</button></p>
 		</form>

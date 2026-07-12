@@ -41,6 +41,12 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 	function gasf_hero_entry_expires( $e ) {
 		$ev = (int) ( $e['event_id'] ?? 0 );
 		if ( ! $ev ) { return 0; }
+		// Linked event deleted or trashed → retire the hero NOW. Without this,
+		// the meta lookups below read '' on a gone post and returned 0 ("never
+		// expires"), pinning a hero that advertises a 404'd event indefinitely
+		// (and outranking recurring heroes via the activate_at comparison).
+		$status = get_post_status( $ev );
+		if ( false === $status || 'trash' === $status ) { return 1; }
 		$end = (int) get_post_meta( $ev, '_gasf_end_ts', true );
 		if ( ! $end ) { return 0; }
 		// Some feed events record end == start (no real end). Retiring the hero

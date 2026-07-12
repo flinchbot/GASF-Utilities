@@ -201,7 +201,16 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		// EMPTY pool. Without dropping the "&& ! empty" guard, a cold cache let
 		// every concurrent visitor run the 45s Graph pagination loop at once.
 		if ( ! $force && get_transient( 'gasf_ig_fetching' ) ) { return $cache['items'] ?? array(); }
-		set_transient( 'gasf_ig_fetching', 1, 180 );
+		// Failure backoff: the fetching transient only guards CONCURRENT
+		// requests. When IG is down or the token is dead, without this every
+		// pageview past TTL re-entered the fetch serially, each blocking up to
+		// 25s on the API timeout. The hourly cron (force=true) bypasses it.
+		if ( ! $force && get_transient( 'gasf_ig_fetch_fail' ) ) { return $cache['items'] ?? array(); }
+		// 300s, not 45s-budget-sized: the budget only bounds the Graph
+		// pagination — each page then sideloads new images synchronously
+		// (25s timeout apiece), so a cold rebuild can outlive a short lock and
+		// let a second visitor start a duplicate full fetch.
+		set_transient( 'gasf_ig_fetching', 1, 300 );
 
 		$target = max( 1, min( 300, max( (int) $s['count'], (int) $s['max'] ) ) );
 		$fields = 'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,children{id,media_type,media_url,thumbnail_url}';
@@ -218,7 +227,12 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			$next  = $res['paging']['next'] ?? '';
 		} while ( $after && ! empty( $next ) && count( $items ) < $target && microtime( true ) < $budget );
 
-		if ( ! $items ) { delete_transient( 'gasf_ig_fetching' ); return $cache['items'] ?? array(); }
+		if ( ! $items ) {
+			set_transient( 'gasf_ig_fetch_fail', 1, 5 * MINUTE_IN_SECONDS );
+			delete_transient( 'gasf_ig_fetching' );
+			return $cache['items'] ?? array();
+		}
+		delete_transient( 'gasf_ig_fetch_fail' );
 		update_option( 'gasf_ig_media_cache', array( 'ts' => time(), 'items' => $items ), false );
 		delete_transient( 'gasf_ig_fetching' );
 		return $items;

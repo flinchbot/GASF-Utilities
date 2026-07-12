@@ -34,10 +34,17 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		if ( '/' === $req ) { return; }
 		foreach ( gasf_redirects_get() as $i => $r ) {
 			if ( empty( $r['from'] ) || gasf_redirects_norm( $r['from'] ) !== $req ) { continue; }
-			$all = gasf_redirects_get();
-			$all[ $i ]['hits'] = (int) ( $all[ $i ]['hits'] ?? 0 ) + 1;
-			$all[ $i ]['last'] = time();
-			gasf_redirects_save( $all );
+			// Throttle the hit-counter persist to once/min per entry: this is an
+			// unauthenticated code path, and each save rewrites the whole option
+			// row — a crawler looping a QR shortlink meant a DB write per request
+			// (and concurrent hits lose counts anyway). Burst hits within the
+			// window go uncounted; the counter is diagnostics, not analytics.
+			if ( time() - (int) ( $r['last'] ?? 0 ) >= MINUTE_IN_SECONDS ) {
+				$all = gasf_redirects_get();
+				$all[ $i ]['hits'] = (int) ( $all[ $i ]['hits'] ?? 0 ) + 1;
+				$all[ $i ]['last'] = time();
+				gasf_redirects_save( $all );
+			}
 			$to = (string) $r['to'];
 			if ( '' === $to ) { continue; }
 			if ( '/' === $to[0] ) { $to = home_url( $to ); }
@@ -59,9 +66,21 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$path = gasf_redirects_norm( $uri );
 		if ( '/' === $path ) { return; }
 		$log = gasf_404_log_get();
-		if ( ! isset( $log[ $path ] ) ) { $log[ $path ] = array( 'hits' => 0, 'first' => time(), 'ref' => '' ); }
+		$now = time();
+		// Write throttles — every log update rewrites the whole option row on
+		// an unauthenticated path, so a vuln scanner used to mean hundreds of
+		// options-table writes/minute:
+		//   1) same path again within 60s → skip (burst hits go uncounted);
+		//   2) site-wide cap of 20 log writes/minute — a scanner sweeping
+		//      hundreds of UNIQUE paths stops being logged (and stops evicting
+		//      real 404s from the 300-entry cap) once the budget is spent.
+		if ( isset( $log[ $path ] ) && $now - (int) ( $log[ $path ]['last'] ?? 0 ) < MINUTE_IN_SECONDS ) { return; }
+		$burst = (int) get_transient( 'gasf_404_burst' );
+		if ( $burst >= 20 ) { return; }
+		set_transient( 'gasf_404_burst', $burst + 1, MINUTE_IN_SECONDS );
+		if ( ! isset( $log[ $path ] ) ) { $log[ $path ] = array( 'hits' => 0, 'first' => $now, 'ref' => '' ); }
 		$log[ $path ]['hits'] = (int) $log[ $path ]['hits'] + 1;
-		$log[ $path ]['last'] = time();
+		$log[ $path ]['last'] = $now;
 		$ref = $_SERVER['HTTP_REFERER'] ?? '';
 		if ( $ref ) { $log[ $path ]['ref'] = esc_url_raw( $ref ); }
 		if ( count( $log ) > 300 ) {

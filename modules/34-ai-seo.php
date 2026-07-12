@@ -83,22 +83,64 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$cfg = gasf_aiseo_cfg();
 		if ( ! $cfg['key'] ) { return array( 'done' => 0, 'errors' => array( 'No API key set.' ) ); }
 		global $wpdb;
-		$titles = array_slice( gasf_aiseo_pending(), 0, max( 1, (int) $limit ) );
+
+		// Failure backoff: a title that keeps erroring (refusal, dead key saved,
+		// empty responses) must not camp at the head of the alphabetical queue
+		// retrying daily forever — it both burns API calls and starves every
+		// title after it. Exponential per-title backoff: 1d, 2d, 4d… capped 7d.
+		$fails = (array) get_option( 'gasf_aiseo_fails', array() );
+		$now   = time();
+		$titles = array_values( array_filter( gasf_aiseo_pending(), function ( $t ) use ( $fails, $now ) {
+			return empty( $fails[ $t ]['until'] ) || (int) $fails[ $t ]['until'] <= $now;
+		} ) );
+		$titles = array_slice( $titles, 0, max( 1, (int) $limit ) );
+
 		$done = 0; $errors = array();
 		$budget = microtime( true ) + 45; // stay under request limits
 		foreach ( $titles as $title ) {
 			if ( microtime( true ) > $budget ) { break; }
-			$pid     = (int) $wpdb->get_var( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_type='gasf_event' AND post_status='publish' AND post_title=%s ORDER BY ID DESC LIMIT 1", $title ) );
-			$content = $pid ? get_post( $pid )->post_content : '';
-			$desc    = gasf_aiseo_call( $cfg['key'], $cfg['model'], gasf_aiseo_prompt( $title, $content ) );
-			if ( is_wp_error( $desc ) ) { $errors[] = $title . ': ' . $desc->get_error_message(); continue; }
-			$desc = trim( $desc, " \"'\n\r\t" );
-			if ( '' === $desc ) { $errors[] = $title . ': empty response'; continue; }
+
+			// Recurring events: the series module creates a NEW post per
+			// occurrence and doesn't copy _gasf_seo_desc, so every new
+			// occurrence used to trigger a fresh (paid) API call — and sibling
+			// occurrences ended up with divergent descriptions. If ANY
+			// occurrence of this title already has a description, copy it to
+			// the blanks instead of generating a new one. Any post status
+			// counts as a donor — a past/trashed occurrence's copy is still
+			// this title's description.
+			$desc = (string) $wpdb->get_var( $wpdb->prepare(
+				"SELECT pm.meta_value FROM {$wpdb->posts} p
+				   JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = '_gasf_seo_desc' AND pm.meta_value <> ''
+				  WHERE p.post_type = 'gasf_event' AND p.post_title = %s
+				  ORDER BY p.ID DESC LIMIT 1", $title
+			) );
+
+			if ( '' === $desc ) {
+				$pid     = (int) $wpdb->get_var( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_type='gasf_event' AND post_status='publish' AND post_title=%s ORDER BY ID DESC LIMIT 1", $title ) );
+				$content = $pid ? get_post( $pid )->post_content : '';
+				$desc    = gasf_aiseo_call( $cfg['key'], $cfg['model'], gasf_aiseo_prompt( $title, $content ) );
+				if ( is_wp_error( $desc ) ) { $errors[] = $title . ': ' . $desc->get_error_message(); $desc = ''; }
+				else { $desc = trim( $desc, " \"'\n\r\t" ); if ( '' === $desc ) { $errors[] = $title . ': empty response'; } }
+				if ( '' === $desc ) {
+					$n = (int) ( $fails[ $title ]['n'] ?? 0 ) + 1;
+					$fails[ $title ] = array( 'n' => $n, 'until' => $now + min( 7 * DAY_IN_SECONDS, DAY_IN_SECONDS * ( 2 ** ( $n - 1 ) ) ) );
+					continue;
+				}
+			}
+
 			foreach ( $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_type='gasf_event' AND post_status='publish' AND post_title=%s", $title ) ) as $id ) {
 				if ( '' === (string) get_post_meta( $id, '_gasf_seo_desc', true ) ) { update_post_meta( $id, '_gasf_seo_desc', $desc ); }
 			}
+			unset( $fails[ $title ] );
 			$done++;
 		}
+
+		// Drop backoff entries that have long expired (title renamed/deleted).
+		foreach ( $fails as $t => $f ) {
+			if ( (int) ( $f['until'] ?? 0 ) < $now - 30 * DAY_IN_SECONDS ) { unset( $fails[ $t ] ); }
+		}
+		update_option( 'gasf_aiseo_fails', $fails, false );
+
 		update_option( 'gasf_aiseo_last', array( 'ts' => time(), 'done' => $done, 'errors' => $errors, 'remaining' => count( gasf_aiseo_pending() ) ), false );
 		return array( 'done' => $done, 'errors' => $errors );
 	}

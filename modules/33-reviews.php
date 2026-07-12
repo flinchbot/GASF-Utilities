@@ -109,8 +109,28 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$c = gasf_reviews_config();
 		$items = array();
 		$status = array();
-		if ( ! empty( $c['google']['on'] ) ) { list( $g, $e ) = gasf_reviews_fetch_google( $c['google']['key'], $c['google']['place'] ); $items = array_merge( $items, $g ); $status['google'] = $e ?: count( $g ) . ' reviews'; }
-		if ( ! empty( $c['tripadvisor']['on'] ) ) { list( $t, $e ) = gasf_reviews_fetch_tripadvisor( $c['tripadvisor']['key'], $c['tripadvisor']['loc'] ); $items = array_merge( $items, $t ); $status['tripadvisor'] = $e ?: count( $t ) . ' reviews'; }
+		// Last-good fallback: a transient API failure (quota, timeout) must not
+		// clobber the cached reviews for that source — the wall would visibly
+		// lose its live reviews for the full TTL. On error, re-use the failed
+		// source's items from the previous cache. 'not configured' is excluded:
+		// a deliberately removed key should drop the source, not pin it forever.
+		$prev = (array) get_option( 'gasf_reviews_cache', array() );
+		$prev_items = ( ! empty( $prev['items'] ) && is_array( $prev['items'] ) ) ? $prev['items'] : array();
+		$last_good = function ( $source ) use ( $prev_items ) {
+			return array_values( array_filter( $prev_items, function ( $i ) use ( $source ) { return ( $i['source'] ?? '' ) === $source; } ) );
+		};
+		if ( ! empty( $c['google']['on'] ) ) {
+			list( $g, $e ) = gasf_reviews_fetch_google( $c['google']['key'], $c['google']['place'] );
+			if ( $e && 'not configured' !== $e ) { $g = $last_good( 'google' ); $status['google'] = $e . ' — serving ' . count( $g ) . ' cached'; }
+			else { $status['google'] = $e ?: count( $g ) . ' reviews'; }
+			$items = array_merge( $items, $g );
+		}
+		if ( ! empty( $c['tripadvisor']['on'] ) ) {
+			list( $t, $e ) = gasf_reviews_fetch_tripadvisor( $c['tripadvisor']['key'], $c['tripadvisor']['loc'] );
+			if ( $e && 'not configured' !== $e ) { $t = $last_good( 'tripadvisor' ); $status['tripadvisor'] = $e . ' — serving ' . count( $t ) . ' cached'; }
+			else { $status['tripadvisor'] = $e ?: count( $t ) . ' reviews'; }
+			$items = array_merge( $items, $t );
+		}
 		// curated (Facebook + extras) always included
 		foreach ( gasf_reviews_manual() as $m ) {
 			$items[] = array(

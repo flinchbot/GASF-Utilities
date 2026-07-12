@@ -22,8 +22,17 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 
 	function gasf_schema_output() {
 		gasf_schema_emit( gasf_schema_organization() );          // all pages
-		if ( is_page( 10264 ) ) { gasf_schema_emit( gasf_schema_bockfest() ); }
-		if ( is_page( 4887 ) )  { gasf_schema_emit( gasf_schema_maifest() ); }
+		// Stop emitting an Event block once the event has ended — Google flags
+		// past-dated Event markup in Search Console until the yearly nowdoc
+		// update. End instants below are duplicated from each block's endDate:
+		// update BOTH when refreshing the year's dates.
+		if ( is_page( 10264 ) && ! gasf_schema_expired( '2026-04-04T19:00:00-04:00' ) ) { gasf_schema_emit( gasf_schema_bockfest() ); }
+		if ( is_page( 4887 )  && ! gasf_schema_expired( '2026-05-09T22:00:00-04:00' ) ) { gasf_schema_emit( gasf_schema_maifest() ); }
+	}
+
+	function gasf_schema_expired( $end_iso ) {
+		$ts = strtotime( $end_iso );
+		return $ts && $ts < time();
 	}
 
 	function gasf_schema_emit( $json ) {
@@ -217,8 +226,8 @@ JSON;
   "subEvent": {
     "@type": "Event",
     "name": "Maifest After Party",
-    "startDate": "2026-05-03T19:00:00-04:00",
-    "endDate": "2026-05-03T22:00:00-04:00",
+    "startDate": "2026-05-09T19:00:00-04:00",
+    "endDate": "2026-05-09T22:00:00-04:00",
     "description": "After party inside the Main Hall with live music by Autobahn Karl.",
     "location": {
       "@type": "Place",

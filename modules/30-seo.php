@@ -369,6 +369,10 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 	add_action( 'save_post', function ( $post_id ) {
 		if ( ! isset( $_POST['gasf_seo_nonce'] ) || ! wp_verify_nonce( wp_unslash( $_POST['gasf_seo_nonce'] ), 'gasf_seo_save' ) ) { return; }
 		if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) { return; }
+		// save_post also fires for the revision copy in the same request —
+		// without this, every save duplicated the SEO meta rows onto the
+		// revision post (steady postmeta growth, and revisions don't need it).
+		if ( wp_is_post_revision( $post_id ) ) { return; }
 		if ( ! current_user_can( 'edit_post', $post_id ) ) { return; }
 		$set = function ( $key, $val ) use ( $post_id ) {
 			$val = trim( (string) $val );

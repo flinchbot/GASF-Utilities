@@ -230,6 +230,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		}
 		if ( ! $pairs ) { return 0; }
 		$rows = 0;
+		$nextend_rows = 0;
 
 		foreach ( $pairs as $old => $new ) {
 			$like = '%' . $wpdb->esc_like( $old ) . '%';
@@ -289,7 +290,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 						"UPDATE `$table` SET `$field` = REPLACE(`$field`, %s, %s) WHERE `$field` LIKE %s", // phpcs:ignore
 						$old, $new, $like
 					) );
-					if ( $done ) { $rows += (int) $done; }
+					if ( $done ) { $rows += (int) $done; $nextend_rows += (int) $done; }
 				}
 			}
 		}
@@ -298,22 +299,27 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		// fully-rendered slider HTML in its section_storage table (application =
 		// 'cache' rows — what its own "Clear cache" button deletes). Purge both,
 		// or the served markup keeps pointing at the old files, which Smart
-		// Slider then happily regenerates from the kept originals.
-		$up   = wp_upload_dir();
-		$slcache = trailingslashit( $up['basedir'] ) . 'slider/cache';
-		if ( is_dir( $slcache ) ) {
-			foreach ( glob( $slcache . '/*' ) ?: array() as $entry ) {
-				if ( is_dir( $entry ) ) {
-					foreach ( glob( $entry . '/*' ) ?: array() as $f ) { @unlink( $f ); }
-					@rmdir( $entry );
-				} else {
-					@unlink( $entry );
+		// Slider then happily regenerates from the kept originals. ONLY when a
+		// nextend row actually referenced this image — unconditional purging
+		// meant a batch of 5 forced 5 full slider-cache rebuilds every 4h even
+		// when no slider used any of the images.
+		if ( $nextend_rows ) {
+			$up   = wp_upload_dir();
+			$slcache = trailingslashit( $up['basedir'] ) . 'slider/cache';
+			if ( is_dir( $slcache ) ) {
+				foreach ( glob( $slcache . '/*' ) ?: array() as $entry ) {
+					if ( is_dir( $entry ) ) {
+						foreach ( glob( $entry . '/*' ) ?: array() as $f ) { @unlink( $f ); }
+						@rmdir( $entry );
+					} else {
+						@unlink( $entry );
+					}
 				}
 			}
-		}
-		$section = $wpdb->prefix . 'nextend2_section_storage';
-		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $section ) ) === $section ) {
-			$wpdb->query( $wpdb->prepare( "DELETE FROM `$section` WHERE application = %s", 'cache' ) ); // phpcs:ignore
+			$section = $wpdb->prefix . 'nextend2_section_storage';
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $section ) ) === $section ) {
+				$wpdb->query( $wpdb->prepare( "DELETE FROM `$section` WHERE application = %s", 'cache' ) ); // phpcs:ignore
+			}
 		}
 
 		return $rows;
@@ -547,15 +553,28 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		if ( isset( $_POST['gasf_imgc_action'] ) && check_admin_referer( 'gasf_imgc' ) ) {
 			$act = sanitize_text_field( wp_unslash( $_POST['gasf_imgc_action'] ) );
 			if ( 'save' === $act ) {
+				$prev_thr = (int) gasf_imgc_settings()['threshold_kb'];
+				$new_thr  = max( 50, (int) ( $_POST['threshold_kb'] ?? 500 ) );
 				update_option( 'gasf_imgc_settings', array(
 					'cron'         => ! empty( $_POST['cron'] ) ? 1 : 0,
-					'threshold_kb' => max( 50, (int) ( $_POST['threshold_kb'] ?? 500 ) ),
+					'threshold_kb' => $new_thr,
 					'quality'      => max( 30, min( 95, (int) ( $_POST['quality'] ?? 78 ) ) ),
 					'max_w'        => max( 800, min( 6000, (int) ( $_POST['max_w'] ?? 2560 ) ) ),
 					'batch'        => max( 1, min( 25, (int) ( $_POST['batch'] ?? 5 ) ) ),
 					'delete_orig'  => ! empty( $_POST['delete_orig'] ) ? 1 : 0,
 				), false );
 				echo '<div class="notice notice-success is-dismissible"><p>Settings saved.</p></div>';
+				// Candidacy is NOT-EXISTS on _gasf_imgc, and sub-threshold files
+				// get stamped 'small' — so lowering the threshold would never
+				// revisit them. Clear the 'small' marks so they're re-evaluated
+				// against the new bar. ('compressed'/'skipped' marks stay.)
+				if ( $new_thr < $prev_thr ) {
+					global $wpdb;
+					$n = (int) $wpdb->query( "DELETE FROM {$wpdb->postmeta} WHERE meta_key = '_gasf_imgc' AND meta_value = 'small'" ); // phpcs:ignore
+					if ( $n ) {
+						echo '<div class="notice notice-info is-dismissible"><p>Threshold lowered — ' . (int) $n . ' previously-skipped "small" image(s) are eligible again.</p></div>';
+					}
+				}
 			} elseif ( 'scan' === $act ) {
 				$scan = gasf_imgc_candidates();
 				echo '<div class="notice notice-info is-dismissible"><p>' . (int) count( $scan ) . ' image(s) above the size threshold (largest first below). Nothing was changed.</p></div>';
@@ -626,7 +645,8 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				<tr><th scope="row">Max dimension</th><td><input type="number" name="max_w" min="800" max="6000" value="<?php echo (int) $s['max_w']; ?>" class="small-text"> px (longest side)</td></tr>
 				<tr><th scope="row">Batch size</th><td><input type="number" name="batch" min="1" max="25" value="<?php echo (int) $s['batch']; ?>" class="small-text"> images per run</td></tr>
 				<tr><th scope="row">Run every 4 hours</th><td><label><input type="checkbox" name="cron" value="1" <?php checked( $s['cron'], 1 ); ?>> Background cron batch</label></td></tr>
-				<tr><th scope="row">Delete originals</th><td><label><input type="checkbox" name="delete_orig" value="1" <?php checked( $s['delete_orig'], 1 ); ?>> Remove old files after compression</label> <span class="description">(default off — keeps rollback + old URLs working)</span></td></tr>
+				<tr><th scope="row">Delete originals</th><td><label><input type="checkbox" name="delete_orig" value="1" <?php checked( $s['delete_orig'], 1 ); ?>> Remove old files after compression</label> <span class="description">(default off — keeps rollback + old URLs working)</span>
+					<?php if ( empty( $s['delete_orig'] ) ) : ?><p class="description" style="color:#996800">⚠ With this off, each compression <strong>adds</strong> the WebP + a new thumbnail set while keeping the original + its old thumbnails (~1.5–2× disk per image, permanent). On this host's 20&nbsp;GB quota the "compressor" grows disk until originals are deleted.</p><?php endif; ?></td></tr>
 			</table>
 			<p><button name="gasf_imgc_action" value="save" class="button button-primary">Save settings</button></p>
 		</form>

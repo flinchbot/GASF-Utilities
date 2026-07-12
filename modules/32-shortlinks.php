@@ -33,11 +33,21 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		if ( '' === $req || false !== strpos( $req, '/' ) ) { return; } // short links are single-segment
 		foreach ( gasf_sl_get() as $i => $l ) {
 			if ( 0 !== strcasecmp( gasf_sl_slug( $l['slug'] ?? '' ), $req ) ) { continue; }
-			if ( empty( $l['url'] ) ) { return; }
-			$all = gasf_sl_get();
-			$all[ $i ]['clicks'] = (int) ( $all[ $i ]['clicks'] ?? 0 ) + 1;
-			$all[ $i ]['last']   = time();
-			gasf_sl_save( $all );
+			// continue, not return: a matched slug with an empty url must not
+			// abort the whole handler — a later-indexed duplicate slug that DOES
+			// have a url should still get its chance.
+			if ( empty( $l['url'] ) ) { continue; }
+			// Persist the click counter at most once/min per link (same throttle
+			// as the redirects module): unauthenticated path, and every save
+			// rewrites the whole option row — a crawler looping a QR link meant
+			// a DB write per request. Burst clicks within the window go
+			// uncounted; the counter is diagnostics, not analytics.
+			if ( time() - (int) ( $l['last'] ?? 0 ) >= MINUTE_IN_SECONDS ) {
+				$all = gasf_sl_get();
+				$all[ $i ]['clicks'] = (int) ( $all[ $i ]['clicks'] ?? 0 ) + 1;
+				$all[ $i ]['last']   = time();
+				gasf_sl_save( $all );
+			}
 			wp_redirect( $l['url'], (int) ( $l['code'] ?? 307 ) );
 			exit;
 		}

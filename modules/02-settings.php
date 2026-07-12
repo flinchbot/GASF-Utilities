@@ -191,3 +191,29 @@ function gasf_settings_tab() {
 	</form>
 	<?php
 }
+
+/**
+ * Gate-off cron reconciliation. A module toggled OFF no longer loads, so it
+ * can never clear its own recurring cron — the orphan fires forever with no
+ * handler (the same ghost-cron class as the retired gasf_calsync_cron).
+ * This file is ungated and always loads, so it clears any gated module's
+ * cron whenever that module's gate is off. (38-image-compress reconciles
+ * its own cron against its 'cron' setting and isn't listed here.)
+ */
+add_action( 'init', function () {
+	$map = array(
+		'gasf_site_enable_instagram' => 'gasf_ig_cron',
+		'gasf_site_enable_reviews'   => 'gasf_reviews_cron',
+		'gasf_site_enable_fbhealth'  => 'gasf_fbh_cron',
+		'gasf_site_enable_aiseo'     => 'gasf_aiseo_cron',
+	);
+	foreach ( $map as $gate => $hook ) {
+		if ( function_exists( 'gasf_site_enabled' ) && ! gasf_site_enabled( $gate ) && wp_next_scheduled( $hook ) ) {
+			wp_clear_scheduled_hook( $hook );
+		}
+	}
+	// 23-recurring-heroes gates on the hero module's toggle instead.
+	if ( function_exists( 'gasf_mec_enabled' ) && ! gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) && wp_next_scheduled( 'gasf_hero_recurring_cron' ) ) {
+		wp_clear_scheduled_hook( 'gasf_hero_recurring_cron' );
+	}
+} );

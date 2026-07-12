@@ -2,7 +2,7 @@
 /**
  * Plugin Name: GASF Utilities
  * Description: All custom germantampabay.com functionality in one update-safe plugin: home-page heroes, SEO + AI event descriptions, short links, redirects, Instagram feed, reviews wall, calendar sync, Facebook token watchdog, performance and hardening tweaks, and more. Each module is individually gated — see the GASF Utilities → Settings tab.
- * Version:     1.12.0
+ * Version:     1.13.0
  * Author:      GASF
  * License:     GPL-2.0-or-later
  * Update URI:  https://github.com/flinchbot/GASF-Utilities
@@ -33,7 +33,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'GASF_MEC_VERSION', '1.12.0' );
+define( 'GASF_MEC_VERSION', '1.13.0' );
 
 // Log lives OUTSIDE the web root (parent of ABSPATH), not web-fetchable.
 // Falls back silently if unwritable (logging is best-effort).
@@ -76,16 +76,20 @@ unset( $gasf_mec_mod );
 add_filter( 'update_plugins_github.com', function ( $update, $plugin_data, $plugin_file ) {
 	if ( basename( $plugin_file ) !== basename( __FILE__ ) ) { return $update; }
 	$ver = get_transient( 'gasf_util_update_check' );
-	if ( ! is_string( $ver ) || '' === $ver ) {
+	if ( ! is_string( $ver ) ) {
 		$ver  = '';
 		$resp = wp_remote_get( 'https://raw.githubusercontent.com/flinchbot/GASF-Utilities/main/gasf-mec-importer.php', array( 'timeout' => 15 ) );
 		if ( ! is_wp_error( $resp ) && 200 === (int) wp_remote_retrieve_response_code( $resp )
 			&& preg_match( '/^\s*\*?\s*Version:\s*([0-9][0-9a-z.\-]*)/mi', (string) wp_remote_retrieve_body( $resp ), $m ) ) {
 			$ver = trim( $m[1] );
 		}
-		set_transient( 'gasf_util_update_check', $ver, 6 * HOUR_IN_SECONDS );
+		// '0' = failure sentinel: '' was previously stored on failure but the
+		// read above treated '' as a cache miss, so every update-check cycle
+		// re-hit GitHub until one succeeded — the 6h transient was a no-op in
+		// the failure path.
+		set_transient( 'gasf_util_update_check', '' === $ver ? '0' : $ver, 6 * HOUR_IN_SECONDS );
 	}
-	if ( '' === $ver || version_compare( $ver, (string) $plugin_data['Version'], '<=' ) ) { return $update; }
+	if ( '' === $ver || '0' === $ver || version_compare( $ver, (string) $plugin_data['Version'], '<=' ) ) { return $update; }
 	return array(
 		'id'      => 'https://github.com/flinchbot/GASF-Utilities',
 		'slug'    => dirname( $plugin_file ),

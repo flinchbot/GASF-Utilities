@@ -30,6 +30,15 @@ if ( gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) ) {
 		return is_array( $e ) ? $e : array();
 	}
 	function gasf_hero_save_entries( $entries ) {
+		// Prune heroes whose linked event ended > 30 days ago — the option grew
+		// forever otherwise (every hero ever scheduled, iterated on each
+		// [gas_hero] render). Standing heroes (no linked event → expires 0)
+		// are never pruned; recent-ended ones are kept for the admin list.
+		$cut = time() - 30 * DAY_IN_SECONDS;
+		$entries = array_values( array_filter( $entries, function ( $e ) use ( $cut ) {
+			$exp = gasf_hero_entry_expires( $e );
+			return ! $exp || $exp > $cut;
+		} ) );
 		usort( $entries, function ( $a, $b ) { return ( (int) $a['activate_at'] ) <=> ( (int) $b['activate_at'] ); } );
 		update_option( GASF_HERO_OPTION, $entries, false );
 	}

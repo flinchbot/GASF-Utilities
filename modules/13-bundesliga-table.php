@@ -27,6 +27,9 @@ add_shortcode( 'bundesliga_table', function( $atts ) {
             $season = $try;
             break;
         }
+        // Negative cache: without it, an empty year (all of Jan–Aug before the
+        // new season exists in OpenLigaDB) re-fetches on EVERY page render.
+        if ( get_transient( $cache_key . '_miss' ) ) { continue; }
         $resp = wp_remote_get(
             "https://api.openligadb.de/getbltable/bl1/{$try}",
             [ 'timeout' => 10 ]
@@ -40,6 +43,7 @@ add_shortcode( 'bundesliga_table', function( $atts ) {
                 break;
             }
         }
+        set_transient( $cache_key . '_miss', 1, HOUR_IN_SECONDS );
     }
 
     if ( empty( $standings ) ) {

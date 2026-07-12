@@ -28,14 +28,20 @@ add_shortcode( 'bundesliga_scorers', function( $atts ) {
         $scorers   = get_transient( $cache_key );
         if ( ! empty( $scorers ) ) { $season = $try; break; }
 
+        // Negative cache: this year's data being empty/unavailable must not mean
+        // "re-download the ENTIRE season's match JSON on every page render" —
+        // which is exactly what happens Jan–Aug (season not in OpenLigaDB yet)
+        // and early-season (no Bayern goals yet, line below skips caching).
+        if ( get_transient( $cache_key . '_miss' ) ) { continue; }
+
         // Fetch match data
         $match_resp = wp_remote_get(
             "https://api.openligadb.de/getmatchdata/bl1/{$try}",
             [ 'timeout' => 15 ]
         );
-        if ( is_wp_error( $match_resp ) || wp_remote_retrieve_response_code( $match_resp ) !== 200 ) continue;
+        if ( is_wp_error( $match_resp ) || wp_remote_retrieve_response_code( $match_resp ) !== 200 ) { set_transient( $cache_key . '_miss', 1, HOUR_IN_SECONDS ); continue; }
         $matches = json_decode( wp_remote_retrieve_body( $match_resp ), true );
-        if ( empty( $matches ) ) continue;
+        if ( empty( $matches ) ) { set_transient( $cache_key . '_miss', 1, HOUR_IN_SECONDS ); continue; }
 
         // Fetch player name lookup from goal getters endpoint
         $gg_resp  = wp_remote_get( "https://api.openligadb.de/getgoalgetters/bl1/{$try}", [ 'timeout' => 10 ] );
@@ -78,7 +84,7 @@ add_shortcode( 'bundesliga_scorers', function( $atts ) {
             }
         }
 
-        if ( empty( $goals_map ) ) continue;
+        if ( empty( $goals_map ) ) { set_transient( $cache_key . '_miss', 1, HOUR_IN_SECONDS ); continue; }
 
         arsort( $goals_map );
         $scorers = [];

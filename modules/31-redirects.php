@@ -39,8 +39,14 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			$all[ $i ]['last'] = time();
 			gasf_redirects_save( $all );
 			$to = (string) $r['to'];
-			if ( '' !== $to && '/' === $to[0] ) { $to = home_url( $to ); }
-			wp_safe_redirect( $to, (int) ( $r['code'] ?? 301 ) );
+			if ( '' === $to ) { continue; }
+			if ( '/' === $to[0] ) { $to = home_url( $to ); }
+			// wp_redirect, not wp_safe_redirect: destinations are admin-entered
+			// (manage_options + nonce) and the UI documents full external URLs as
+			// valid targets — wp_safe_redirect() rejects any host not on WP's
+			// allowlist and dumps the visitor at wp-admin instead. Same call
+			// shortlinks uses for the same reason.
+			wp_redirect( $to, (int) ( $r['code'] ?? 301 ) ); // phpcs:ignore WordPress.Security.SafeRedirect
 			exit;
 		}
 	}, 1 );

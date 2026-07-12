@@ -25,13 +25,17 @@ add_shortcode( 'bundesliga_top_scorers', function( $atts ) {
         $scorers   = get_transient( $cache_key );
         if ( ! empty( $scorers ) ) { $season = $try; break; }
 
+        // Negative cache — same pattern as [bundesliga_table]: an empty year
+        // (off-season) must not re-fetch on every page render.
+        if ( get_transient( $cache_key . '_miss' ) ) { continue; }
+
         $resp = wp_remote_get(
             "https://api.openligadb.de/getgoalgetters/bl1/{$try}",
             [ 'timeout' => 10 ]
         );
-        if ( is_wp_error( $resp ) || wp_remote_retrieve_response_code( $resp ) !== 200 ) continue;
+        if ( is_wp_error( $resp ) || wp_remote_retrieve_response_code( $resp ) !== 200 ) { set_transient( $cache_key . '_miss', 1, HOUR_IN_SECONDS ); continue; }
         $data = json_decode( wp_remote_retrieve_body( $resp ), true );
-        if ( empty( $data ) ) continue;
+        if ( empty( $data ) ) { set_transient( $cache_key . '_miss', 1, HOUR_IN_SECONDS ); continue; }
 
         // Already sorted by goals desc — just store
         $scorers = $data;

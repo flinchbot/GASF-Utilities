@@ -99,11 +99,21 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		return array( 'dir' => trailingslashit( $u['basedir'] ) . GASF_IG_DIR, 'url' => trailingslashit( $u['baseurl'] ) . GASF_IG_DIR );
 	}
 
-	/** Download an image once; return a local URL (or the remote URL on failure). */
-	function gasf_ig_sideload( $remote_url ) {
+	/**
+	 * Download an image once; return a local URL (or the remote URL on failure).
+	 *
+	 * $key should be the stable Instagram media id (plus a child suffix for
+	 * carousel frames). IG CDN URLs carry rotating signatures, so keying the
+	 * filename on md5(url) — the old behavior, kept only as a fallback when no
+	 * key is passed — re-downloaded every image under a new name on every
+	 * hourly refresh and grew uploads/gasf-ig by ~2GB/day. Keyed on media id,
+	 * an unchanged post maps to the same file forever and is never re-fetched.
+	 */
+	function gasf_ig_sideload( $remote_url, $key = '' ) {
 		if ( ! $remote_url ) { return ''; }
 		$c    = gasf_ig_cache_dir();
-		$name = md5( $remote_url ) . '.jpg';
+		$key  = preg_replace( '/[^A-Za-z0-9_-]/', '', (string) $key );
+		$name = ( '' !== $key ? 'ig-' . $key : md5( $remote_url ) ) . '.jpg';
 		$path = $c['dir'] . '/' . $name;
 		$url  = $c['url'] . '/' . $name;
 		if ( file_exists( $path ) ) { return $url; }
@@ -154,22 +164,26 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$type       = strtoupper( $m['media_type'] ?? 'IMAGE' );
 		$is_reel    = ( ( $m['media_product_type'] ?? '' ) === 'REELS' );
 		$poster_src = ( $type === 'VIDEO' ) ? ( $m['thumbnail_url'] ?? $m['media_url'] ?? '' ) : ( $m['media_url'] ?? '' );
+		$mid  = (string) ( $m['id'] ?? '' );
 		$item = array(
-			'id'        => $m['id'] ?? '',
+			'id'        => $mid,
 			'type'      => $type === 'VIDEO' ? ( $is_reel ? 'reel' : 'video' ) : ( $type === 'CAROUSEL_ALBUM' ? 'album' : 'image' ),
 			'permalink' => $m['permalink'] ?? '',
 			'caption'   => (string) ( $m['caption'] ?? '' ),
 			'time'      => $m['timestamp'] ?? '',
-			'poster'    => gasf_ig_sideload( $poster_src ),
+			'poster'    => gasf_ig_sideload( $poster_src, $mid ),
 			'video'     => $type === 'VIDEO' ? ( $m['media_url'] ?? '' ) : '',
 			'children'  => array(),
 		);
 		if ( ! empty( $m['children']['data'] ) ) {
 			foreach ( $m['children']['data'] as $ch ) {
 				$ct = strtoupper( $ch['media_type'] ?? 'IMAGE' );
+				// Children carry their own stable ids; fall back to parent-id + index.
+				$ckey = (string) ( $ch['id'] ?? '' );
+				if ( '' === $ckey && '' !== $mid ) { $ckey = $mid . '_' . count( $item['children'] ); }
 				$item['children'][] = array(
 					'type'   => $ct === 'VIDEO' ? 'video' : 'image',
-					'poster' => gasf_ig_sideload( $ct === 'VIDEO' ? ( $ch['thumbnail_url'] ?? '' ) : ( $ch['media_url'] ?? '' ) ),
+					'poster' => gasf_ig_sideload( $ct === 'VIDEO' ? ( $ch['thumbnail_url'] ?? '' ) : ( $ch['media_url'] ?? '' ), $ckey ),
 					'video'  => $ct === 'VIDEO' ? ( $ch['media_url'] ?? '' ) : '',
 				);
 			}
@@ -190,7 +204,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		set_transient( 'gasf_ig_fetching', 1, 180 );
 
 		$target = max( 1, min( 300, max( (int) $s['count'], (int) $s['max'] ) ) );
-		$fields = 'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,children{media_type,media_url,thumbnail_url}';
+		$fields = 'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,children{id,media_type,media_url,thumbnail_url}';
 		$items  = array();
 		$after  = '';
 		$budget = microtime( true ) + 45; // bounded; the hourly cron keeps the pool warm

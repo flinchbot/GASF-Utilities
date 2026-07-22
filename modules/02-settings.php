@@ -44,7 +44,8 @@ if ( ! function_exists( 'gasf_anthropic_key' ) ) {
 function gasf_settings_registry() {
 	return array(
 		'Content & home page' => array(
-			array( 'gate' => 'gasf_mec_enable_hero', 'label' => 'Home Page Hero + Recurring Heroes', 'desc' => 'The <code>[gas_hero]</code> banner, the Heroes scheduler and the event-driven Recurring Heroes (one gate covers both tabs).', 'tab' => 'heroes' ),
+			// Home Page Hero + Recurring Heroes moved to the GASF-Events plugin
+			// (Events → Heroes / Recurring Heroes; gate on Events → Settings).
 			array( 'gate' => 'gasf_site_enable_parking', 'label' => 'Parking block', 'desc' => 'The <code>[gas_parking]</code> "Getting Here, Parking &amp; Transit" block for event pages.' ),
 			array( 'gate' => 'gasf_mec_enable_wc_schedule', 'label' => 'World Cup schedule', 'desc' => 'The <code>[world_cup_schedule]</code> watch-party schedule.' ),
 		),
@@ -212,8 +213,5 @@ add_action( 'init', function () {
 			wp_clear_scheduled_hook( $hook );
 		}
 	}
-	// 23-recurring-heroes gates on the hero module's toggle instead.
-	if ( function_exists( 'gasf_mec_enabled' ) && ! gasf_mec_enabled( 'gasf_mec_enable_hero', '0' ) && wp_next_scheduled( 'gasf_hero_recurring_cron' ) ) {
-		wp_clear_scheduled_hook( 'gasf_hero_recurring_cron' );
-	}
+	// (Heroes moved to GASF-Events; it owns the gasf_hero_recurring_cron lifecycle now.)
 } );

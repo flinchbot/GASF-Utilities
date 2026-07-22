@@ -102,10 +102,8 @@ function gasf_utilities_overview_tab() {
 	$tab = function ( $slug ) { return esc_url( admin_url( 'admin.php?page=gasf-utilities&tab=' . $slug ) ); };
 	echo '<p>All custom germantampabay.com functionality lives in this one must-use plugin — every tab above is one self-contained utility. Each tab opens with a collapsible <strong>&#128214; About this utility</strong> panel explaining what it does, what it needs to run, and what every field is for. This Overview is the map. The <a href="' . $tab( 'settings' ) . '"><strong>Settings</strong></a> tab is the switchboard: turn any utility on/off and manage site-wide settings (e.g. the Anthropic API key).</p>';
 
-	echo '<h3>Content &amp; home page</h3><ul style="list-style:disc;margin-left:22px">';
-	echo '<li><a href="' . $tab( 'heroes' ) . '"><strong>Heroes</strong></a> — schedule the home-page hero image (the big banner rendered by the <code>[gas_hero]</code> shortcode). Newest entry whose activation time has passed wins.</li>';
-	echo '<li><a href="' . $tab( 'recurring-heroes' ) . '"><strong>Recurring Heroes</strong></a> — auto-heroes for recurring events (Euchre Night, Krampus Meetup…): the hero appears N days before the next occurrence on the events calendar and disappears after it ends. Manual Heroes entries override.</li>';
-	echo '</ul>';
+	// Home-page Heroes + Recurring Heroes moved to the GASF-Events plugin
+	// (Events → Heroes / Recurring Heroes). See the note at the bottom of this page.
 
 	echo '<h3>Search &amp; links</h3><ul style="list-style:disc;margin-left:22px">';
 	echo '<li><a href="' . $tab( 'seo' ) . '"><strong>SEO</strong></a> — the native replacement for Yoast: titles, meta descriptions, canonical/robots, OpenGraph/Twitter cards, JSON-LD, sitemap redirects, plus the per-page "SEO (GASF)" editor box.</li>';
@@ -125,7 +123,7 @@ function gasf_utilities_overview_tab() {
 	echo '</ul>';
 
 	echo '<h3>Runs automatically (no tab)</h3><ul style="list-style:disc;margin-left:22px">';
-	echo '<li><strong>Shortcodes</strong> — <code>[gas_hero]</code>, <code>[gas_parking]</code>, <code>[world_cup_schedule]</code>, <code>[bundesliga_table]</code>, <code>[bundesliga_scorers]</code>, <code>[bundesliga_top_scorers]</code>, <code>[gasf_instagram]</code>, <code>[gasf_reviews]</code>. (Event lists &amp; the Welton blurb are native GASF-Events shortcodes: <code>[gasf_events]</code>, <code>[gasf_upcoming_dates]</code>, <code>[gasf_dinner_events]</code>, <code>[gasf_bayern_events]</code>, <code>[gasf_welton_status]</code>.)</li>';
+	echo '<li><strong>Shortcodes</strong> — <code>[gas_parking]</code>, <code>[world_cup_schedule]</code>, <code>[bundesliga_table]</code>, <code>[bundesliga_scorers]</code>, <code>[bundesliga_top_scorers]</code>, <code>[gasf_instagram]</code>, <code>[gasf_reviews]</code>. (Event lists, the Welton blurb &amp; the home-page hero are native GASF-Events shortcodes: <code>[gasf_events]</code>, <code>[gasf_upcoming_dates]</code>, <code>[gasf_dinner_events]</code>, <code>[gasf_bayern_events]</code>, <code>[gasf_welton_status]</code>, <code>[gas_hero]</code>.)</li>';
 	echo '<li><strong>Schema JSON-LD</strong> — Organization + festival Event markup (migrated from the retired HFCM plugin).</li>';
 	echo '<li><strong>Site hardening</strong> — REST user-listing &amp; author-enumeration blocks, misc content 301s.</li>';
 	echo '</ul>';

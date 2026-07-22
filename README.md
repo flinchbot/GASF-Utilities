@@ -1,10 +1,10 @@
 # GASF Utilities
 
 All custom **germantampabay.com** functionality in one update-safe plugin:
-home-page heroes, native SEO + AI event descriptions, branded short links,
-redirects + 404 log, native Instagram feed, reviews wall, Google Calendar sync,
-Facebook token watchdog, performance and hardening tweaks, and a stack of
-content shortcodes.
+native SEO + AI event descriptions, branded short links, redirects + 404 log,
+native Instagram feed, reviews wall, Facebook token watchdog, performance and
+hardening tweaks, and a stack of content shortcodes. (Home-page heroes moved to
+the **GASF-Events** plugin — Events → Heroes / Recurring Heroes.)
 
 ## How it's put together
 

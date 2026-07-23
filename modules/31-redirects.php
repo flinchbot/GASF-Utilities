@@ -28,6 +28,26 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		return $path;
 	}
 
+	/* ---- friendly 404: theme chrome + "here's our calendar" + upcoming events ---- */
+	// Most 404s are bot/scanner noise (/.env, /.git, …) — harmless to serve them a
+	// nice page — but real humans DO hit 404s too (gone events, old-domain links,
+	// mistyped URLs), and a helpful page keeps them on the site. Swaps in our
+	// template while KEEPING the 404 status (the template calls status_header(404)).
+	add_filter( 'template_include', function ( $template ) {
+		if ( ! is_404() ) { return $template; }
+		$custom = __DIR__ . '/templates/404.php';
+		return is_readable( $custom ) ? $custom : $template;
+	}, 99 );
+
+	// Force the GASF-Events list CSS onto the 404 page. Its own auto-enqueue keys
+	// off post content (there's no post on a 404), so enqueue here during
+	// wp_enqueue_scripts — before wp_head — so the calendar list renders styled.
+	add_action( 'wp_enqueue_scripts', function () {
+		if ( is_404() && class_exists( '\GASF_Events\Assets' ) ) {
+			\GASF_Events\Assets::mark_needed();
+		}
+	} );
+
 	/* ---- dead Modern Events Calendar iCal endpoints -> 410 Gone ---- */
 	// MEC was removed; its per-occurrence iCal export URLs (`?method=ical&id=…&
 	// occurrence=…`) now fall through to WordPress and 200 with the HOME page +

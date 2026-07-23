@@ -61,6 +61,32 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$robots['max-video-preview'] = -1;
 		return $robots;
 	} );
+
+	// robots.txt FILE (distinct from the wp_robots META filter above): block
+	// crawling of internal search results — WordPress `?s=` search generates
+	// infinite, low-value, duplicate URLs. Well-behaved crawlers (incl. the AI
+	// bots now allowed) then skip them, saving crawl budget.
+	//
+	// Scope note: this robots.txt is served at the DOMAIN ROOT by the MAIN
+	// install and governs the WHOLE domain — crawlers only ever read
+	// /robots.txt, never /krampus/robots.txt (which 404s). So the wildcard
+	// `/*?s=` is deliberate: one rule covers /?s=, /krampus/?s=, /dancers/?s=.
+	// (As of 2026-07-22 robots.txt comes straight from WordPress — Cloudflare's
+	// "Manage your robots.txt" was disabled, so it no longer overrides this.)
+	add_filter( 'robots_txt', function ( $output, $public ) {
+		if ( ! $public ) { return $output; } // "discourage indexing" on → leave core's Disallow: /
+		$extra = "Disallow: /*?s=\n";
+		// Keep the rule inside core's "User-agent: *" group (Disallow lines must
+		// sit in a group, before the Sitemap line the core sitemap filter adds).
+		if ( false !== strpos( $output, 'admin-ajax.php' ) ) {
+			return preg_replace( '/(admin-ajax\.php\n)/', '$1' . $extra, $output, 1 );
+		}
+		if ( false !== strpos( $output, 'Disallow: /wp-admin/' ) ) {
+			return preg_replace( '#(Disallow: /wp-admin/\n)#', '$1' . $extra, $output, 1 );
+		}
+		return "User-agent: *\n" . $extra . "\n" . $output; // fallback: own group
+	}, 10, 2 );
+
 	// Old Yoast sitemap URLs → core sitemap, so crawlers/GSC don't 404.
 	// NOTE: strpos/preg_match here are deliberately NOT start-anchored to the
 	// literal request path — on a subdirectory install (e.g. /krampus/) the

@@ -28,6 +28,25 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		return $path;
 	}
 
+	/* ---- dead Modern Events Calendar iCal endpoints -> 410 Gone ---- */
+	// MEC was removed; its per-occurrence iCal export URLs (`?method=ical&id=…&
+	// occurrence=…`) now fall through to WordPress and 200 with the HOME page +
+	// a home canonical. Harmless-ish (canonical consolidates them) but it wastes
+	// crawl budget and once surfaced as a 5xx in Search Console. 410 tells Google
+	// the endpoint is permanently gone so it drops these for good. Path is '/'
+	// with a query string, so the path-based redirect table below can't catch it.
+	add_action( 'template_redirect', function () {
+		if ( is_admin() ) { return; }
+		$method = isset( $_GET['method'] ) ? strtolower( sanitize_key( wp_unslash( $_GET['method'] ) ) ) : '';
+		if ( 'ical' === $method ) {
+			status_header( 410 );
+			nocache_headers();
+			header( 'Content-Type: text/plain; charset=utf-8' );
+			echo 'Gone. This calendar export endpoint was retired with the old events plugin.';
+			exit;
+		}
+	}, 0 );
+
 	/* ---- apply redirects (early) ---- */
 	add_action( 'template_redirect', function () {
 		$req = gasf_redirects_norm( $_SERVER['REQUEST_URI'] ?? '/' );

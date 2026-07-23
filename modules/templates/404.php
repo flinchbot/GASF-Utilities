@@ -21,6 +21,18 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 status_header( 404 );
 nocache_headers();
 
+// Resolve the calendar page across sites: main uses /calendar-of-events/,
+// Krampus uses /schedule/ (this plugin auto-updates to both). Fall back to the
+// events archive, then home, so the button never points at a 404 itself.
+$gasf_cal = get_page_by_path( 'calendar-of-events' );
+if ( ! $gasf_cal ) { $gasf_cal = get_page_by_path( 'schedule' ); }
+if ( $gasf_cal ) {
+	$gasf_cal_url = get_permalink( $gasf_cal );
+} else {
+	$gasf_cpt     = defined( 'GASF_EVENTS_CPT' ) ? GASF_EVENTS_CPT : 'gasf_event';
+	$gasf_cal_url = get_post_type_archive_link( $gasf_cpt ) ?: home_url( '/' );
+}
+
 get_header();
 ?>
 <div class="gasf-404" style="max-width:860px;margin:48px auto 64px;padding:0 22px;text-align:center">
@@ -32,7 +44,7 @@ get_header();
 	</p>
 	<p style="margin:0 0 40px">
 		<a href="<?php echo esc_url( home_url( '/' ) ); ?>" style="display:inline-block;padding:11px 28px;margin:5px;border-radius:6px;background:#a4161a;color:#fff;text-decoration:none;font-weight:600">Home</a>
-		<a href="<?php echo esc_url( home_url( '/calendar-of-events/' ) ); ?>" style="display:inline-block;padding:11px 28px;margin:5px;border-radius:6px;background:#2f3c7e;color:#fff;text-decoration:none;font-weight:600">Full calendar</a>
+		<a href="<?php echo esc_url( $gasf_cal_url ); ?>" style="display:inline-block;padding:11px 28px;margin:5px;border-radius:6px;background:#2f3c7e;color:#fff;text-decoration:none;font-weight:600">Full calendar</a>
 	</p>
 	<h2 style="font-size:1.45rem;margin:0 0 18px">Upcoming events</h2>
 	<div style="text-align:left">

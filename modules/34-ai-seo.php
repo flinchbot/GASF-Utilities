@@ -60,7 +60,16 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$content = wp_strip_all_tags( strip_shortcodes( (string) $content ) );
 		$content = trim( preg_replace( '/\s+/', ' ', $content ) );
 		if ( mb_strlen( $content ) > 800 ) { $content = mb_substr( $content, 0, 800 ); }
-		return "Write a single compelling SEO meta description (max 155 characters, plain text, no quotation marks, no line breaks) for this event page at the German-American Society Friendship of Pinellas County — a German-American cultural club in Pinellas Park, Tampa Bay, Florida.\n\nEvent title: {$title}\nDetails: {$content}\n\nRespond with ONLY the meta description, nothing else.";
+		// Target 150 (not 155) so normal model overshoot still lands under Google's
+		// ~155-char SERP truncation. gasf_seo_clip() is the hard backstop; this just
+		// keeps the model close so the backstop rarely has to cut anything.
+		return "Write ONE compelling SEO meta description for this event page at the German-American Society Friendship of Pinellas County — a German-American cultural club in Pinellas Park, Tampa Bay, Florida.\n\n" .
+			"Strict rules:\n" .
+			"- HARD LIMIT: 150 characters maximum. Aim for 130-150. Shorter is fine; going over is not.\n" .
+			"- Exactly one sentence. Plain text. No quotation marks, line breaks, or emojis.\n" .
+			"- Must end on a complete word with normal end punctuation.\n\n" .
+			"Event title: {$title}\nDetails: {$content}\n\n" .
+			"Respond with ONLY the finished meta description (under 150 characters), nothing else.";
 	}
 
 	/** Distinct published-event titles with no description on any occurrence. */
@@ -120,7 +129,14 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				$content = $pid ? get_post( $pid )->post_content : '';
 				$desc    = gasf_aiseo_call( $cfg['key'], $cfg['model'], gasf_aiseo_prompt( $title, $content ) );
 				if ( is_wp_error( $desc ) ) { $errors[] = $title . ': ' . $desc->get_error_message(); $desc = ''; }
-				else { $desc = trim( $desc, " \"'\n\r\t" ); if ( '' === $desc ) { $errors[] = $title . ': empty response'; } }
+				else {
+					$desc = trim( $desc, " \"'\n\r\t" );
+					// Store clean: hard-cap so the DB never holds an over-length description
+					// even if the model ignores the prompt. Same helper the SEO module serves
+					// through (guarded — SEO module 30 loads before this one but stay safe).
+					if ( '' !== $desc && function_exists( 'gasf_seo_clip' ) ) { $desc = gasf_seo_clip( $desc ); }
+					if ( '' === $desc ) { $errors[] = $title . ': empty response'; }
+				}
 				if ( '' === $desc ) {
 					$n = (int) ( $fails[ $title ]['n'] ?? 0 ) + 1;
 					$fails[ $title ] = array( 'n' => $n, 'until' => $now + min( 7 * DAY_IN_SECONDS, DAY_IN_SECONDS * ( 2 ** ( $n - 1 ) ) ) );

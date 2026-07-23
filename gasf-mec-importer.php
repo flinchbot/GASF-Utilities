@@ -2,7 +2,7 @@
 /**
  * Plugin Name: GASF Utilities
  * Description: All custom germantampabay.com functionality in one update-safe plugin: SEO + AI event descriptions, short links, redirects, Instagram feed, reviews wall, Facebook token watchdog, performance and hardening tweaks, and more. Each module is individually gated — see the GASF Utilities → Settings tab. (Home-page heroes moved to the GASF-Events plugin.)
- * Version:     1.15.0
+ * Version:     1.16.0
  * Author:      GASF
  * License:     GPL-2.0-or-later
  * Update URI:  https://github.com/flinchbot/GASF-Utilities
@@ -33,7 +33,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'GASF_MEC_VERSION', '1.14.0' );
+define( 'GASF_MEC_VERSION', '1.16.0' );
 
 // Log lives OUTSIDE the web root (parent of ABSPATH), not web-fetchable.
 // Falls back silently if unwritable (logging is best-effort).

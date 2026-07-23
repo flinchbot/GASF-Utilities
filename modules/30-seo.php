@@ -226,6 +226,37 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		return wp_json_encode( array( '@context' => 'https://schema.org', '@type' => 'BreadcrumbList', 'itemListElement' => $items ), JSON_UNESCAPED_SLASHES );
 	}
 
+	/**
+	 * Hard-cap a meta description at $max characters on a clean boundary.
+	 *
+	 * The SERP snippet Google shows is truncated at ~155–160 chars, so this is
+	 * the single enforcement point: the AI writer (module 34) is *asked* for a
+	 * short description but LLMs can't reliably count characters, so we guarantee
+	 * it here at serve time — for AI, hand-written, and excerpt-fallback text
+	 * alike. Prefers ending on a complete sentence if one lands in the back
+	 * portion; otherwise cuts at the last word boundary (never mid-word) and
+	 * strips trailing punctuation. No ellipsis (cleaner for meta text; Google
+	 * adds its own if it truncates further). Non-destructive — stored
+	 * `_gasf_seo_desc` values are untouched; only the rendered tag is capped.
+	 */
+	function gasf_seo_clip( $text, $max = 155 ) {
+		$text = trim( preg_replace( '/\s+/', ' ', (string) $text ) );
+		if ( '' === $text || mb_strlen( $text ) <= $max ) {
+			return $text;
+		}
+		$slice = mb_substr( $text, 0, $max );
+		// Full-sentence end within the back ~40% → keep the clean sentence.
+		if ( preg_match( '/^(.*[.!?])(?:\s|$)/us', $slice, $m ) && mb_strlen( $m[1] ) >= (int) ( $max * 0.6 ) ) {
+			return $m[1];
+		}
+		// Else cut at the last space (drop the partial trailing word), tidy punctuation.
+		$sp = mb_strrpos( $slice, ' ' );
+		if ( false !== $sp && $sp >= (int) ( $max * 0.5 ) ) {
+			$slice = mb_substr( $slice, 0, $sp );
+		}
+		return rtrim( $slice, " ,;:.!?-–—" );
+	}
+
 	function gasf_seo_desc() {
 		$s = gasf_seo_settings();
 		if ( is_front_page() ) {
@@ -240,7 +271,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 			$d = '';
 		}
 		$d = gasf_seo_expand( $d );
-		return trim( wp_strip_all_tags( $d ) );
+		return gasf_seo_clip( trim( wp_strip_all_tags( $d ) ) );
 	}
 
 	function gasf_seo_canonical() {

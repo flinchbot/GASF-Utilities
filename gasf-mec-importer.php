@@ -2,7 +2,7 @@
 /**
  * Plugin Name: GASF Utilities
  * Description: All custom germantampabay.com functionality in one update-safe plugin: SEO + AI event descriptions, short links, redirects, Instagram feed, reviews wall, Facebook token watchdog, performance and hardening tweaks, and more. Each module is individually gated — see the GASF Utilities → Settings tab. (Home-page heroes moved to the GASF-Events plugin.)
- * Version:     1.22.0
+ * Version:     1.23.0
  * Author:      GASF
  * License:     GPL-2.0-or-later
  * Update URI:  https://github.com/flinchbot/GASF-Utilities
@@ -85,9 +85,10 @@ add_filter( 'update_plugins_github.com', function ( $update, $plugin_data, $plug
 		}
 		// '0' = failure sentinel: '' was previously stored on failure but the
 		// read above treated '' as a cache miss, so every update-check cycle
-		// re-hit GitHub until one succeeded — the 6h transient was a no-op in
-		// the failure path.
-		set_transient( 'gasf_util_update_check', '' === $ver ? '0' : $ver, 6 * HOUR_IN_SECONDS );
+		// re-hit GitHub until one succeeded — the old transient was a no-op in
+		// the failure path. TTL is 15 min (was 6 h, which made every fresh push
+		// invisible to `wp plugin update` for hours).
+		set_transient( 'gasf_util_update_check', '' === $ver ? '0' : $ver, 15 * MINUTE_IN_SECONDS );
 	}
 	if ( '' === $ver || '0' === $ver || version_compare( $ver, (string) $plugin_data['Version'], '<=' ) ) { return $update; }
 	return array(
@@ -118,3 +119,87 @@ add_filter( 'upgrader_source_selection', function ( $source, $remote_source, $up
 	if ( $wp_filesystem->move( $source, $want, true ) && $wp_filesystem->exists( $want . $main ) ) { return $want; }
 	return new WP_Error( 'gasf_pkg_move', 'Could not prepare the GASF Utilities update (folder rename failed); keeping the installed version.' );
 }, 10, 4 );
+
+/* -------------------------------------------------------------------------
+ * 2026-07-24 incident hardening (ported from GASF-Events 2d058a4).
+ *
+ * Two concurrent updates of a plugin (WP takes NO lock for manual/CLI plugin
+ * updates) can interleave clear_destination/copy_dir and leave the plugin
+ * folder EMPTY while both runs report success — that's exactly what wiped
+ * GASF-Events on Krampus. The fail-closed guard above can't catch it: it
+ * protects the staging step, not the destination step. Two more layers:
+ *   1. upgrader_pre_install       — serialize via a WP_Upgrader lock (a
+ *      second concurrent run aborts BEFORE the destination is cleared) and
+ *      snapshot the installed plugin dir.
+ *   2. upgrader_install_package_result — if the result is an error or this
+ *      main file is missing afterwards, restore the snapshot. Any failure
+ *      mode heals back to the prior version. Then release the lock.
+ * ------------------------------------------------------------------------- */
+
+/** Plain-PHP recursive copy — deliberately independent of WP_Filesystem. */
+function gasf_util_copy_tree( $from, $to ) {
+	if ( ! is_dir( $from ) ) { return false; }
+	if ( ! is_dir( $to ) && ! mkdir( $to, 0755, true ) ) { return false; }
+	$ok = true;
+	foreach ( new RecursiveIteratorIterator(
+		new RecursiveDirectoryIterator( $from, FilesystemIterator::SKIP_DOTS ),
+		RecursiveIteratorIterator::SELF_FIRST
+	) as $item ) {
+		$dest = $to . '/' . substr( (string) $item, strlen( $from ) + 1 );
+		if ( $item->isDir() ) {
+			$ok = ( is_dir( $dest ) || mkdir( $dest, 0755, true ) ) && $ok;
+		} else {
+			$ok = copy( (string) $item, $dest ) && $ok;
+		}
+	}
+	return $ok;
+}
+
+function gasf_util_delete_tree( $dir ) {
+	if ( ! is_dir( $dir ) ) { return; }
+	foreach ( new RecursiveIteratorIterator(
+		new RecursiveDirectoryIterator( $dir, FilesystemIterator::SKIP_DOTS ),
+		RecursiveIteratorIterator::CHILD_FIRST
+	) as $item ) {
+		$item->isDir() ? rmdir( (string) $item ) : unlink( (string) $item );
+	}
+	rmdir( $dir );
+}
+
+function gasf_util_backup_dir() {
+	return WP_CONTENT_DIR . '/upgrade/gasf-utilities-preupdate';
+}
+
+// Abort a second concurrent run before it can clear the destination; snapshot the install.
+add_filter( 'upgrader_pre_install', function ( $response, $hook_extra ) {
+	$hook_extra = (array) $hook_extra;
+	if ( is_wp_error( $response ) || empty( $hook_extra['plugin'] ) || basename( (string) $hook_extra['plugin'] ) !== basename( __FILE__ ) ) { return $response; }
+	if ( class_exists( 'WP_Upgrader' ) && ! WP_Upgrader::create_lock( 'gasf_util_upgrade', 2 * MINUTE_IN_SECONDS ) ) {
+		return new WP_Error( 'gasf_locked', 'Another GASF Utilities update is already running; skipped to avoid a destructive race.' );
+	}
+	$backup = gasf_util_backup_dir();
+	gasf_util_delete_tree( $backup );
+	if ( is_dir( __DIR__ ) && file_exists( __FILE__ ) ) {
+		gasf_util_copy_tree( __DIR__, $backup );
+	}
+	return $response;
+}, 10, 2 );
+
+// After install: verify the plugin dir is intact; restore the snapshot if not.
+add_filter( 'upgrader_install_package_result', function ( $result, $hook_extra ) {
+	$hook_extra = (array) $hook_extra;
+	if ( empty( $hook_extra['plugin'] ) || basename( (string) $hook_extra['plugin'] ) !== basename( __FILE__ ) ) { return $result; }
+	$backup = gasf_util_backup_dir();
+	$broken = is_wp_error( $result ) || ! file_exists( __FILE__ );
+	if ( $broken && is_dir( $backup ) && file_exists( trailingslashit( $backup ) . basename( __FILE__ ) ) ) {
+		gasf_util_copy_tree( $backup, __DIR__ );
+		gasf_mec_log( 'updater: install left the plugin broken ('
+			. ( is_wp_error( $result ) ? $result->get_error_code() : 'main file missing' )
+			. ') — restored the pre-update snapshot.' );
+	}
+	gasf_util_delete_tree( $backup );
+	if ( class_exists( 'WP_Upgrader' ) ) {
+		WP_Upgrader::release_lock( 'gasf_util_upgrade' );
+	}
+	return $result;
+}, 10, 2 );

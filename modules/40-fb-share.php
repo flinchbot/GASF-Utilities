@@ -32,6 +32,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		return wp_parse_args( (array) get_option( 'gasf_fbshare', array() ), array(
 			'tag'      => '#gasfweb',  // trigger hashtag (whole word, case-insensitive)
 			'status'   => 'draft',     // 'draft' | 'publish'
+			'ai_title' => '1',         // Claude Haiku writes the post title (needs site-wide Anthropic key)
 			'category' => 0,           // term_id, 0 = site default
 			'author'   => 0,           // user id, 0 = first admin found at import time
 			'link'     => '1',         // append "Originally posted on Facebook" attribution
@@ -182,6 +183,43 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		return (int) $att_id;
 	}
 
+	/* ============================ AI title ============================ */
+
+	/**
+	 * Ask Claude Haiku for a headline (site-wide key, option gasf_anthropic_key —
+	 * same key module 34 uses). Returns the title or '' on any failure, so the
+	 * caller can always fall back to the first-line heuristic.
+	 */
+	function gasf_fbs_ai_title( $message ) {
+		$key = (string) get_option( 'gasf_anthropic_key', '' );
+		$message = trim( (string) $message );
+		if ( '' === $key || '' === $message ) { return ''; }
+		$r = wp_remote_post( 'https://api.anthropic.com/v1/messages', array(
+			'timeout' => 30,
+			'headers' => array(
+				'x-api-key'         => $key,
+				'anthropic-version' => '2023-06-01',
+				'content-type'      => 'application/json',
+			),
+			'body'    => wp_json_encode( array(
+				'model'      => 'claude-haiku-4-5-20251001',
+				'max_tokens' => 100,
+				'messages'   => array( array( 'role' => 'user', 'content' =>
+					"Write a blog-post headline for the German-American Society of Tampa Bay's website, summarizing this Facebook post. " .
+					"Under 70 characters. Same language as the post (English titles may keep German words like Biergarten or Stammtisch). " .
+					"No hashtags, no quotes, no trailing period. Reply with the headline only.\n\n" .
+					mb_substr( $message, 0, 4000 )
+				) ),
+			) ),
+		) );
+		if ( is_wp_error( $r ) || 200 !== (int) wp_remote_retrieve_response_code( $r ) ) { return ''; }
+		$b = json_decode( wp_remote_retrieve_body( $r ), true );
+		$t = trim( (string) ( $b['content'][0]['text'] ?? '' ) );
+		$t = trim( $t, "\"'“”‘’ \t\r\n" );
+		if ( '' === $t || mb_strlen( $t ) > 110 || false !== strpos( $t, "\n" ) ) { return ''; } // refuse rambling output
+		return $t;
+	}
+
 	/* ============================ import ============================ */
 
 	/** Turn one matching FB post into a WP post. Returns post id or WP_Error. */
@@ -190,16 +228,21 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		$message = gasf_fbs_strip_tag( (string) ( $raw['message'] ?? '' ), $c['tag'] );
 		$link    = (string) ( $raw['permalink_url'] ?? '' );
 
-		// Title = first line, trimmed to a headline; body = the rest.
-		$lines = preg_split( '/\r\n|\r|\n/', $message, 2 );
-		$title = trim( (string) ( $lines[0] ?? '' ) );
-		$body  = trim( (string) ( $lines[1] ?? '' ) );
-		if ( mb_strlen( $title ) > 90 ) {                       // long first line → it IS the body
-			$body  = $message;
-			$title = mb_substr( $title, 0, 80 ) . '…';
-		}
+		// Title: Claude Haiku headline when enabled + key present; otherwise (or on
+		// any AI failure) fall back to the first line of the message.
+		$title = ( '1' === $c['ai_title'] ) ? gasf_fbs_ai_title( $message ) : '';
+		$body  = $message;
 		if ( '' === $title ) {
-			$title = 'From Facebook — ' . wp_date( 'M j, Y', strtotime( (string) ( $raw['created_time'] ?? 'now' ) ) );
+			$lines = preg_split( '/\r\n|\r|\n/', $message, 2 );
+			$title = trim( (string) ( $lines[0] ?? '' ) );
+			$body  = trim( (string) ( $lines[1] ?? '' ) );
+			if ( mb_strlen( $title ) > 90 ) {                   // long first line → it IS the body
+				$body  = $message;
+				$title = mb_substr( $title, 0, 80 ) . '…';
+			}
+			if ( '' === $title ) {
+				$title = 'From Facebook — ' . wp_date( 'M j, Y', strtotime( (string) ( $raw['created_time'] ?? 'now' ) ) );
+			}
 		}
 
 		// Author: setting, else the first administrator.
@@ -241,10 +284,15 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				}
 			}
 		}
-		$gallery = array_slice( $att_ids, 1 ); // featured image already leads the post
-		if ( count( $gallery ) >= 1 ) {
+		// ALL photos go into the content (the hoot-du-premium theme doesn't render
+		// the featured image on single posts): one image block, or a gallery block
+		// when there are several. The featured image still powers archive cards
+		// and OpenGraph previews.
+		if ( 1 === count( $att_ids ) ) {
+			$content .= '<!-- wp:image {"id":' . (int) $att_ids[0] . ',"sizeSlug":"large","linkDestination":"media"} --><figure class="wp-block-image size-large">' . wp_get_attachment_image( $att_ids[0], 'large' ) . '</figure><!-- /wp:image -->' . "\n";
+		} elseif ( count( $att_ids ) > 1 ) {
 			$content .= '<!-- wp:gallery {"linkTo":"media"} --><figure class="wp-block-gallery has-nested-images columns-default is-cropped">';
-			foreach ( $gallery as $gid ) {
+			foreach ( $att_ids as $gid ) {
 				$content .= '<!-- wp:image {"id":' . (int) $gid . ',"sizeSlug":"large","linkDestination":"media"} --><figure class="wp-block-image size-large">' . wp_get_attachment_image( $gid, 'large' ) . '</figure><!-- /wp:image -->';
 			}
 			$content .= '</figure><!-- /wp:gallery -->' . "\n";
@@ -316,6 +364,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				$tag = trim( sanitize_text_field( wp_unslash( $_POST['tag'] ?? $c['tag'] ) ) );
 				$c['tag']      = '#' . ltrim( $tag, '#' );
 				$c['status']   = ( 'publish' === ( $_POST['status'] ?? '' ) ) ? 'publish' : 'draft';
+				$c['ai_title'] = empty( $_POST['ai_title'] ) ? '0' : '1';
 				$c['category'] = (int) ( $_POST['category'] ?? 0 );
 				$c['author']   = (int) ( $_POST['author'] ?? 0 );
 				$c['link']     = empty( $_POST['link'] ) ? '0' : '1';
@@ -343,6 +392,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				'fields' => array(
 					'Trigger hashtag' => 'The tag that marks a Facebook post for import. Pick something that would never be typed organically — <code>#share</code> shows up in normal posts ("please #share!") and would import things you didn\'t mean to.',
 					'New post status' => '<strong>Draft</strong> = imported posts wait for a human to hit Publish (recommended while trialing). <strong>Publish</strong> = fully automatic.',
+					'AI title'        => 'Claude Haiku reads the post and writes a proper headline (uses the site-wide Anthropic key from the Settings tab; costs a fraction of a cent per import). If the key is missing or the call fails, the first line of the Facebook post is used instead.',
 					'Category'        => 'Category assigned to every imported post.',
 					'Author'          => 'WordPress user shown as the post author.',
 					'Attribution link'=> 'Appends a small "Originally posted on our Facebook page" link to each imported post.',
@@ -372,6 +422,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 					<label><input type="radio" name="status" value="draft" <?php checked( 'draft', $c['status'] ); ?>> Draft (review before publishing)</label><br>
 					<label><input type="radio" name="status" value="publish" <?php checked( 'publish', $c['status'] ); ?>> Publish immediately</label>
 				</td></tr>
+				<tr><th scope="row">AI title</th><td><label><input type="checkbox" name="ai_title" value="1" <?php checked( '1', $c['ai_title'] ); ?>> Let Claude Haiku write the headline</label><?php if ( ! get_option( 'gasf_anthropic_key' ) ) { echo ' <span style="color:#b32d2e">(no site-wide Anthropic key set — falls back to first line)</span>'; } ?></td></tr>
 				<tr><th scope="row">Category</th><td><?php wp_dropdown_categories( array( 'name' => 'category', 'selected' => (int) $c['category'], 'show_option_none' => '— site default —', 'option_none_value' => 0, 'hide_empty' => 0 ) ); ?></td></tr>
 				<tr><th scope="row">Author</th><td><?php wp_dropdown_users( array( 'name' => 'author', 'selected' => (int) $c['author'], 'show_option_none' => '— first administrator —', 'option_none_value' => 0, 'capability' => 'edit_posts' ) ); ?></td></tr>
 				<tr><th scope="row">Attribution link</th><td><label><input type="checkbox" name="link" value="1" <?php checked( '1', $c['link'] ); ?>> Link back to the original Facebook post</label></td></tr>

@@ -14,7 +14,9 @@
  *
  * Design decisions (see admin doc panel):
  *   - Import-once: a post is imported a single time (dedup via post meta
- *     `_gasf_fbshare_id`); later FB edits are not re-synced.
+ *     `_gasf_fbshare_id`); later FB edits are not re-synced. To force a
+ *     re-import (e.g. after reworking the FB post), trash/delete the WP
+ *     copy; to archive it so it never comes back, set it to draft.
  *   - New posts land as DRAFT until the "auto-publish" toggle is flipped.
  *   - Videos can't be downloaded via the API → the post links to FB instead.
  *
@@ -107,11 +109,18 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		return trim( (string) $out );
 	}
 
-	/** Already imported? Look the FB post id up in post meta. */
+	/**
+	 * Already imported? Look the FB post id up in post meta.
+	 *
+	 * The status list deliberately EXCLUDES trash: trashing (or deleting) the
+	 * WP copy is the "pull it back in" gesture — the next scan re-imports the
+	 * current Facebook version fresh. Setting it to draft ARCHIVES it instead
+	 * (found here → never re-imported).
+	 */
 	function gasf_fbs_existing_post( $fb_id ) {
 		$q = get_posts( array(
 			'post_type'      => 'post',
-			'post_status'    => 'any',
+			'post_status'    => array( 'publish', 'draft', 'pending', 'future', 'private' ),
 			'posts_per_page' => 1,
 			'fields'         => 'ids',
 			'meta_key'       => '_gasf_fbshare_id',
@@ -412,7 +421,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 					'Attribution link'=> 'Every imported post ends with a small line showing the original Facebook post date; this toggle controls whether that date links back to the Facebook post.',
 					'Scan now'        => 'Runs the hourly check immediately.',
 				),
-				'notes'  => 'Videos cannot be downloaded through the API — a post with video gets a "Watch on Facebook" link instead. Deleting an imported blog post does NOT re-import it on the next scan (the FB id stays recorded in the trash); permanently delete the trashed post if you want a re-import.',
+				'notes'  => 'Videos cannot be downloaded through the API — a post with video gets a "Watch on Facebook" link instead. <strong>Re-import:</strong> deleting/trashing the WP copy makes the next scan pull the Facebook post back in fresh (handy after you rework a FB post — the re-import gets the current text, photos, and a new AI title). <strong>Archive:</strong> switch the WP copy to Draft instead — drafts are never re-imported. Don\'t restore the trashed copy after a re-import or you\'ll have two.',
 			) );
 		}
 		?>

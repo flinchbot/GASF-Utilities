@@ -310,11 +310,12 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		if ( $has_video && $link ) {
 			$content .= "<!-- wp:paragraph --><p><a href=\"" . esc_url( $link ) . "\">▶ Watch the video on Facebook</a></p><!-- /wp:paragraph -->\n";
 		}
-		// Footer: original FB post date, plus the attribution link when enabled.
+		// Footer: just the original FB post date (linked to the FB post when the
+		// toggle is on — provenance without any "posted on Facebook" wording).
 		$fb_date = wp_date( 'F j, Y', strtotime( (string) ( $raw['created_time'] ?? 'now' ) ) );
 		$footer  = ( '1' === $c['link'] && $link )
-			? '<a href="' . esc_url( $link ) . '">Originally posted on our Facebook page</a> — ' . esc_html( $fb_date )
-			: 'Originally posted on Facebook — ' . esc_html( $fb_date );
+			? '<a href="' . esc_url( $link ) . '">' . esc_html( $fb_date ) . '</a>'
+			: esc_html( $fb_date );
 		$content .= '<!-- wp:paragraph {"fontSize":"small"} --><p class="has-small-font-size"><em>' . $footer . '</em></p><!-- /wp:paragraph -->' . "\n";
 		wp_update_post( array( 'ID' => $post_id, 'post_content' => $content ) );
 
@@ -408,7 +409,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 					'AI title'        => 'Claude Haiku reads the post and writes a proper headline (uses the site-wide Anthropic key from the Settings tab; costs a fraction of a cent per import). If the key is missing or the call fails, the first line of the Facebook post is used instead.',
 					'Category'        => 'Category assigned to every imported post.',
 					'Author'          => 'WordPress user shown as the post author.',
-					'Attribution link'=> 'Every imported post ends with a small line showing the original Facebook post date; this toggle controls whether that line also links back to the Facebook post.',
+					'Attribution link'=> 'Every imported post ends with a small line showing the original Facebook post date; this toggle controls whether that date links back to the Facebook post.',
 					'Scan now'        => 'Runs the hourly check immediately.',
 				),
 				'notes'  => 'Videos cannot be downloaded through the API — a post with video gets a "Watch on Facebook" link instead. Deleting an imported blog post does NOT re-import it on the next scan (the FB id stays recorded in the trash); permanently delete the trashed post if you want a re-import.',
@@ -438,7 +439,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 				<tr><th scope="row">AI title</th><td><label><input type="checkbox" name="ai_title" value="1" <?php checked( '1', $c['ai_title'] ); ?>> Let Claude Haiku write the headline</label><?php if ( ! gasf_fbs_anthropic_key() ) { echo ' <span style="color:#b32d2e">(no Anthropic key found — falls back to first line)</span>'; } ?></td></tr>
 				<tr><th scope="row">Category</th><td><?php wp_dropdown_categories( array( 'name' => 'category', 'selected' => (int) $c['category'], 'show_option_none' => '— site default —', 'option_none_value' => 0, 'hide_empty' => 0 ) ); ?></td></tr>
 				<tr><th scope="row">Author</th><td><?php wp_dropdown_users( array( 'name' => 'author', 'selected' => (int) $c['author'], 'show_option_none' => '— first administrator —', 'option_none_value' => 0, 'capability' => 'edit_posts' ) ); ?></td></tr>
-				<tr><th scope="row">Attribution link</th><td><label><input type="checkbox" name="link" value="1" <?php checked( '1', $c['link'] ); ?>> Link back to the original Facebook post</label></td></tr>
+				<tr><th scope="row">Date link</th><td><label><input type="checkbox" name="link" value="1" <?php checked( '1', $c['link'] ); ?>> Footer date links back to the original Facebook post</label></td></tr>
 			</table>
 			<p><button name="gasf_fbs_action" value="save" class="button button-primary">Save</button></p>
 		</form>

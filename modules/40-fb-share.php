@@ -185,13 +185,23 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 
 	/* ============================ AI title ============================ */
 
+	/** Anthropic key, resolved like module 34: site-wide first, aiseo legacy fallback. */
+	function gasf_fbs_anthropic_key() {
+		$key = (string) get_option( 'gasf_anthropic_key', '' );
+		if ( '' === $key ) {
+			$aiseo = (array) get_option( 'gasf_aiseo_config', array() );
+			$key   = (string) ( $aiseo['key'] ?? '' );
+		}
+		return $key;
+	}
+
 	/**
-	 * Ask Claude Haiku for a headline (site-wide key, option gasf_anthropic_key —
-	 * same key module 34 uses). Returns the title or '' on any failure, so the
-	 * caller can always fall back to the first-line heuristic.
+	 * Ask Claude Haiku for a headline (same key module 34 uses). Returns the
+	 * title or '' on any failure, so the caller can always fall back to the
+	 * first-line heuristic.
 	 */
 	function gasf_fbs_ai_title( $message ) {
-		$key = (string) get_option( 'gasf_anthropic_key', '' );
+		$key = gasf_fbs_anthropic_key();
 		$message = trim( (string) $message );
 		if ( '' === $key || '' === $message ) { return ''; }
 		$r = wp_remote_post( 'https://api.anthropic.com/v1/messages', array(
@@ -422,7 +432,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 					<label><input type="radio" name="status" value="draft" <?php checked( 'draft', $c['status'] ); ?>> Draft (review before publishing)</label><br>
 					<label><input type="radio" name="status" value="publish" <?php checked( 'publish', $c['status'] ); ?>> Publish immediately</label>
 				</td></tr>
-				<tr><th scope="row">AI title</th><td><label><input type="checkbox" name="ai_title" value="1" <?php checked( '1', $c['ai_title'] ); ?>> Let Claude Haiku write the headline</label><?php if ( ! get_option( 'gasf_anthropic_key' ) ) { echo ' <span style="color:#b32d2e">(no site-wide Anthropic key set — falls back to first line)</span>'; } ?></td></tr>
+				<tr><th scope="row">AI title</th><td><label><input type="checkbox" name="ai_title" value="1" <?php checked( '1', $c['ai_title'] ); ?>> Let Claude Haiku write the headline</label><?php if ( ! gasf_fbs_anthropic_key() ) { echo ' <span style="color:#b32d2e">(no Anthropic key found — falls back to first line)</span>'; } ?></td></tr>
 				<tr><th scope="row">Category</th><td><?php wp_dropdown_categories( array( 'name' => 'category', 'selected' => (int) $c['category'], 'show_option_none' => '— site default —', 'option_none_value' => 0, 'hide_empty' => 0 ) ); ?></td></tr>
 				<tr><th scope="row">Author</th><td><?php wp_dropdown_users( array( 'name' => 'author', 'selected' => (int) $c['author'], 'show_option_none' => '— first administrator —', 'option_none_value' => 0, 'capability' => 'edit_posts' ) ); ?></td></tr>
 				<tr><th scope="row">Attribution link</th><td><label><input type="checkbox" name="link" value="1" <?php checked( '1', $c['link'] ); ?>> Link back to the original Facebook post</label></td></tr>

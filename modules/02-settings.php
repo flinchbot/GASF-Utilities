@@ -66,6 +66,7 @@ function gasf_settings_registry() {
 			array( 'gate' => 'gasf_site_enable_reviews', 'label' => 'Reviews wall', 'desc' => 'The <code>[gasf_reviews]</code> Google + TripAdvisor + curated reviews wall. API keys live on the Reviews tab.', 'tab' => 'reviews' ),
 			array( 'gate' => 'gasf_site_enable_fbhealth', 'label' => 'FB token watchdog', 'desc' => 'Daily probe + auto-heal + email alert for the GASF-Events Facebook feed token.', 'tab' => 'fbhealth' ),
 			array( 'gate' => 'gasf_site_enable_fbshare', 'label' => 'FB &rarr; Blog importer', 'desc' => 'Hourly scan of the Facebook page for posts tagged with the trigger hashtag (default <code>#gasfweb</code>); each becomes a WordPress post with its photos. Borrows the GASF-Events feed token.', 'tab' => 'fbshare' ),
+			array( 'gate' => 'gasf_site_enable_recentposts', 'label' => 'Recent posts rail', 'desc' => 'The <code>[gasf_recent_posts]</code> "Latest News" card list on the home-page right rail — surfaces the FB-imported blog posts. Purges the page cache when a post publishes.' ),
 		),
 		'Site hardening & performance' => array(
 			array( 'gate' => 'gasf_site_enable_restenum', 'label' => 'REST user-enumeration block', 'desc' => 'Blocks REST API user listing / author enumeration.' ),

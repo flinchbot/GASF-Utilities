@@ -310,9 +310,12 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 		if ( $has_video && $link ) {
 			$content .= "<!-- wp:paragraph --><p><a href=\"" . esc_url( $link ) . "\">▶ Watch the video on Facebook</a></p><!-- /wp:paragraph -->\n";
 		}
-		if ( '1' === $c['link'] && $link ) {
-			$content .= "<!-- wp:paragraph {\"fontSize\":\"small\"} --><p class=\"has-small-font-size\"><em><a href=\"" . esc_url( $link ) . "\">Originally posted on our Facebook page</a></em></p><!-- /wp:paragraph -->\n";
-		}
+		// Footer: original FB post date, plus the attribution link when enabled.
+		$fb_date = wp_date( 'F j, Y', strtotime( (string) ( $raw['created_time'] ?? 'now' ) ) );
+		$footer  = ( '1' === $c['link'] && $link )
+			? '<a href="' . esc_url( $link ) . '">Originally posted on our Facebook page</a> — ' . esc_html( $fb_date )
+			: 'Originally posted on Facebook — ' . esc_html( $fb_date );
+		$content .= '<!-- wp:paragraph {"fontSize":"small"} --><p class="has-small-font-size"><em>' . $footer . '</em></p><!-- /wp:paragraph -->' . "\n";
 		wp_update_post( array( 'ID' => $post_id, 'post_content' => $content ) );
 
 		return (int) $post_id;
@@ -405,7 +408,7 @@ if ( function_exists( 'gasf_site_enabled' ) ? gasf_site_enabled( 'gasf_site_enab
 					'AI title'        => 'Claude Haiku reads the post and writes a proper headline (uses the site-wide Anthropic key from the Settings tab; costs a fraction of a cent per import). If the key is missing or the call fails, the first line of the Facebook post is used instead.',
 					'Category'        => 'Category assigned to every imported post.',
 					'Author'          => 'WordPress user shown as the post author.',
-					'Attribution link'=> 'Appends a small "Originally posted on our Facebook page" link to each imported post.',
+					'Attribution link'=> 'Every imported post ends with a small line showing the original Facebook post date; this toggle controls whether that line also links back to the Facebook post.',
 					'Scan now'        => 'Runs the hourly check immediately.',
 				),
 				'notes'  => 'Videos cannot be downloaded through the API — a post with video gets a "Watch on Facebook" link instead. Deleting an imported blog post does NOT re-import it on the next scan (the FB id stays recorded in the trash); permanently delete the trashed post if you want a re-import.',
